@@ -1,0 +1,3 @@
+option('install_examples', type: 'boolean', value: false, description: 'install example workers')
+option('worker_interface_file', type: 'string', description: 'path to com.redhat.Yggdrasil1.Worker1.xml')
+option('dispatcher_interface_file', type: 'string', description: 'path to com.redhat.Yggdrasil1.Dispatcher1.xml')

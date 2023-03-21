@@ -1,0 +1,96 @@
+/* ygg-version.h.in
+ *
+ * Copyright 2023 Link Dupont
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+#pragma once
+
+#if !defined(LIBYGG_INSIDE) && !defined(LIBYGG_COMPILATION)
+# error "Only <ygg.h> can be included directly."
+#endif
+
+/**
+ * SECTION:libyggversion
+ * @short_description: libygg version checking
+ *
+ * libygg provides macros to check the version of the library
+ * at compile-time
+ */
+
+/**
+ * LIBYGG_MAJOR_VERSION:
+ *
+ * libygg major version component (e.g. 1 if %LIBYGG_VERSION is 1.2.3)
+ */
+#define LIBYGG_MAJOR_VERSION (@MAJOR_VERSION@)
+
+/**
+ * LIBYGG_MINOR_VERSION:
+ *
+ * libygg minor version component (e.g. 2 if %LIBYGG_VERSION is 1.2.3)
+ */
+#define LIBYGG_MINOR_VERSION (@MINOR_VERSION@)
+
+/**
+ * LIBYGG_MICRO_VERSION:
+ *
+ * libygg micro version component (e.g. 3 if %LIBYGG_VERSION is 1.2.3)
+ */
+#define LIBYGG_MICRO_VERSION (@MICRO_VERSION@)
+
+/**
+ * LIBYGG_VERSION
+ *
+ * libygg version.
+ */
+#define LIBYGG_VERSION (@VERSION@)
+
+/**
+ * LIBYGG_VERSION_S:
+ *
+ * libygg version, encoded as a string, useful for printing and
+ * concatenation.
+ */
+#define LIBYGG_VERSION_S "@VERSION@"
+
+#define LIBYGG_ENCODE_VERSION(major,minor,micro) \
+        ((major) << 24 | (minor) << 16 | (micro) << 8)
+
+/**
+ * LIBYGG_VERSION_HEX:
+ *
+ * libygg version, encoded as an hexadecimal number, useful for
+ * integer comparisons.
+ */
+#define LIBYGG_VERSION_HEX \
+        (LIBYGG_ENCODE_VERSION (LIBYGG_MAJOR_VERSION, LIBYGG_MINOR_VERSION, LIBYGG_MICRO_VERSION))
+
+/**
+ * LIBYGG_CHECK_VERSION:
+ * @major: required major version
+ * @minor: required minor version
+ * @micro: required micro version
+ *
+ * Compile-time version checking. Evaluates to %TRUE if the version
+ * of libygg is greater than the required one.
+ */
+#define LIBYGG_CHECK_VERSION(major,minor,micro)   \
+        (LIBYGG_MAJOR_VERSION > (major) || \
+         (LIBYGG_MAJOR_VERSION == (major) && LIBYGG_MINOR_VERSION > (minor)) || \
+         (LIBYGG_MAJOR_VERSION == (major) && LIBYGG_MINOR_VERSION == (minor) && \
+          LIBYGG_MICRO_VERSION >= (micro)))
