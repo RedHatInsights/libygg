@@ -382,6 +382,7 @@ handle_get_property (GDBusConnection  *connection,
     value = g_variant_new_boolean (priv->remote_content);
   } else
   if (g_strcmp0 (property_name, "Features") == 0) {
+    g_assert_nonnull (priv->features);
     GVariantBuilder builder;
     g_variant_builder_init (&builder, G_VARIANT_TYPE("a{ss}"));
 
@@ -809,7 +810,7 @@ ygg_worker_get_property (GObject    *object,
       g_value_set_boolean (value, priv->remote_content);
       break;
     case PROP_FEATURES:
-      g_value_take_boxed (value, priv->features);
+      g_value_set_boxed (value, priv->features);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -835,7 +836,9 @@ ygg_worker_set_property (GObject      *object,
       priv->remote_content = g_value_get_boolean (value);
       break;
     case PROP_FEATURES:
-      g_hash_table_unref (priv->features);
+      if (priv->features) {
+        g_hash_table_unref (priv->features);
+      }
       priv->features = (GHashTable *) g_value_get_boxed (value);
       break;
     default:
@@ -844,10 +847,22 @@ ygg_worker_set_property (GObject      *object,
 }
 
 static void
+ygg_worker_constructed (GObject *object)
+{
+  YggWorker *self = YGG_WORKER (object);
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+
+  if (priv->features == NULL) {
+    priv->features = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
+  }
+}
+
+static void
 ygg_worker_class_init (YggWorkerClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
+  object_class->constructed = ygg_worker_constructed;
   object_class->finalize = ygg_worker_finalize;
   object_class->get_property = ygg_worker_get_property;
   object_class->set_property = ygg_worker_set_property;
@@ -921,6 +936,7 @@ ygg_worker_init (YggWorker *self)
 {
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
 
+  priv->directive = NULL;
   priv->remote_content = FALSE;
   priv->features = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
 }
