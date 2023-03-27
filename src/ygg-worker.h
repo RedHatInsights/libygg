@@ -94,13 +94,14 @@ typedef enum
  * @addr: (transfer full): destination address of the data to be transmitted.
  * @id: (transfer full): a UUID.
  * @response_to: (transfer full) (nullable): a UUID the data is in response to
- *               or NULL.
+ *               or %NULL.
  * @metadata: (transfer full) (nullable) (element-type utf8 utf8): a #GHashTable
- *            containing key-value pairs associated with the data or NULL.
+ *            containing key-value pairs associated with the data or %NULL.
  * @data: (transfer full): the data.
+ * @user_data: (transfer none) (closure): The owning #YggWorker instance.
  *
- * Signature for callback function used in ygg_worker_new(). It is invoked each
- * time the worker receives data from the dispatcher.
+ * Signature for callback function used in ygg_worker_set_rx_func(). It is
+ * invoked each time the worker receives data from the dispatcher.
  */
 typedef void (* YggRxFunc) (gchar      *addr,
                             gchar      *id,
@@ -113,8 +114,9 @@ typedef void (* YggRxFunc) (gchar      *addr,
  * YggEventFunc:
  * @event: The event received from the dispatcher.
  *
- * Signature for callback function used in ygg_worker_new(). It is invoked each
- * time the worker receives a com.redhat.Yggdrasil1.Dispatcher1.Event signal.
+ * Signature for callback function used in ygg_worker_set_event_func(). It is
+ * invoked each time the worker receives a
+ * com.redhat.Yggdrasil1.Dispatcher1.Event signal.
  */
 typedef void (* YggEventFunc) (YggDispatcherEvent event);
 

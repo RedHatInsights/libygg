@@ -496,7 +496,7 @@ on_name_lost (GDBusConnection *connection,
  * @directive: (transfer none): The worker directive name.
  * @remote_content: The worker requires content from a remote URL.
  * @features: (transfer full) (element-type utf8 utf8) (nullable): An initial table of
- *            worker features.
+ *            values to use as the worker's features map.
  *
  * Creates a new #YggWorker instance.
  *
@@ -742,12 +742,12 @@ ygg_worker_set_feature (YggWorker    *self,
 /**
  * ygg_worker_set_rx_func:
  * @worker: A #YggWorker instance.
- * @rx: (scope forever): A #YggRxFunc callback.
+ * @rx: (scope call): A #YggRxFunc callback.
  *
  * Stores a pointer to a handler function that is invoked whenever data is
  * received by the worker.
  *
- * Returns: #TRUE if setting the function handler succeeded.
+ * Returns: %TRUE if setting the function handler succeeded.
  */
 gboolean
 ygg_worker_set_rx_func (YggWorker *self,
@@ -761,12 +761,12 @@ ygg_worker_set_rx_func (YggWorker *self,
 /**
  * ygg_worker_set_event_func:
  * @worker: A #YggWorker instance.
- * @event: (scope forever): A #YggEventFunc callback.
+ * @event: (scope call): A #YggEventFunc callback.
  *
  * Stores a pointer to a handler function that is invoked whenever an event
  * signal is received by the worker.
  *
- * Returns: #TRUE if setting the function handler succeeded.
+ * Returns: %TRUE if setting the function handler succeeded.
  */
 gboolean
 ygg_worker_set_event_func (YggWorker    *self,
@@ -852,21 +852,30 @@ ygg_worker_class_init (YggWorkerClass *klass)
   object_class->get_property = ygg_worker_get_property;
   object_class->set_property = ygg_worker_set_property;
 
-  properties[PROP_DIRECTIVE] = g_param_spec_string ("directive",
-                                                    "directive",
-                                                    "directive",
-                                                    NULL,
+  /**
+   * YggWorker:directive:
+   *
+   * The unique identifier for the worker.
+   */
+  properties[PROP_DIRECTIVE] = g_param_spec_string ("directive", NULL, NULL, NULL,
                                                     G_PARAM_READWRITE|G_PARAM_CONSTRUCT_ONLY);
 
-  properties[PROP_REMOTE_CONTENT] = g_param_spec_boolean ("remote-content",
-                                                          "remote-content",
-                                                          "remote-content",
-                                                          FALSE,
+  /**
+   * YggWorker:remote-content:
+   *
+   * When %TRUE, hints to the dispatcher that the worker expects data to be
+   * retrieved from a remote location.
+   */
+  properties[PROP_REMOTE_CONTENT] = g_param_spec_boolean ("remote-content", NULL, NULL, FALSE,
                                                           G_PARAM_READWRITE|G_PARAM_CONSTRUCT_ONLY);
-  properties[PROP_FEATURES] = g_param_spec_boxed ("features",
-                                                  "features",
-                                                  "features",
-                                                  G_TYPE_HASH_TABLE,
+
+  /**
+   * YggWorker:features:
+   *
+   * An optional mapping of key/value string pairs that the worker may use to
+   * communicate state with the dispatcher.
+   */
+  properties[PROP_FEATURES] = g_param_spec_boxed ("features", NULL, NULL, G_TYPE_HASH_TABLE,
                                                   G_PARAM_READWRITE|G_PARAM_CONSTRUCT_ONLY);
   g_object_class_install_properties (object_class, N_PROPS, properties);
 
