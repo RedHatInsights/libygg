@@ -231,6 +231,7 @@ invoke_rx (gpointer user_data)
     }
   }
 
+  g_assert_nonnull (priv->rx);
   priv->rx (addr, id, response_to, metadata, g_variant_get_data_as_bytes (data), self);
 
   g_assert_null (err);
@@ -496,30 +497,21 @@ on_name_lost (GDBusConnection *connection,
  * @remote_content: The worker requires content from a remote URL.
  * @features: (transfer full) (element-type utf8 utf8) (nullable): An initial table of
  *            worker features.
- * @rx: (scope call): A #YggRxFunc callback.
- * @event_rx: (scope call): A #YggEventFunc callback.
  *
  * Creates a new #YggWorker instance.
  *
  * Returns: (transfer full): A new #YggWorker instance.
  */
 YggWorker *
-ygg_worker_new (const gchar  *directive,
-                gboolean      remote_content,
-                GHashTable   *features,
-                YggRxFunc     rx,
-                YggEventFunc  event_rx)
+ygg_worker_new (const gchar *directive,
+                gboolean     remote_content,
+                GHashTable  *features)
 {
-  YggWorker *obj = g_object_new (YGG_TYPE_WORKER,
-                                 "directive", directive,
-                                 "remote-content", remote_content,
-                                 "features", features,
-                                 NULL);
-  YggWorkerPrivate *priv = ygg_worker_get_instance_private (obj);
-  priv->rx = rx;
-  priv->event_rx = event_rx;
-
-  return obj;
+  return g_object_new (YGG_TYPE_WORKER,
+                       "directive", directive,
+                       "remote-content", remote_content,
+                       "features", features,
+                       NULL);
 }
 
 /**
@@ -538,6 +530,7 @@ gboolean
 ygg_worker_connect (YggWorker *self, GError **error)
 {
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+  g_assert_nonnull (priv->rx);
 
   if (g_regex_match_simple ("-", priv->directive, 0, 0)) {
     if (error != NULL) {
@@ -744,6 +737,44 @@ ygg_worker_set_feature (YggWorker    *self,
   }
 
   return exists;
+}
+
+/**
+ * ygg_worker_set_rx_func:
+ * @worker: A #YggWorker instance.
+ * @rx: (scope forever): A #YggRxFunc callback.
+ *
+ * Stores a pointer to a handler function that is invoked whenever data is
+ * received by the worker.
+ *
+ * Returns: #TRUE if setting the function handler succeeded.
+ */
+gboolean
+ygg_worker_set_rx_func (YggWorker *self,
+                        YggRxFunc  rx)
+{
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+  priv->rx = rx;
+  return TRUE;
+}
+
+/**
+ * ygg_worker_set_event_func:
+ * @worker: A #YggWorker instance.
+ * @event: (scope forever): A #YggEventFunc callback.
+ *
+ * Stores a pointer to a handler function that is invoked whenever an event
+ * signal is received by the worker.
+ *
+ * Returns: #TRUE if setting the function handler succeeded.
+ */
+gboolean
+ygg_worker_set_event_func (YggWorker    *self,
+                           YggEventFunc  event)
+{
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+  priv->event_rx = event;
+  return TRUE;
 }
 
 static void

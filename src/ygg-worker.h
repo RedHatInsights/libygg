@@ -122,11 +122,9 @@ typedef void (* YggEventFunc) (YggDispatcherEvent event);
 
 G_DECLARE_FINAL_TYPE (YggWorker, ygg_worker, YGG, WORKER, GObject)
 
-YggWorker *ygg_worker_new (const gchar  *directive,
-                           gboolean      remote_content,
-                           GHashTable   *features,
-                           YggRxFunc     rx,
-                           YggEventFunc  event_rx);
+YggWorker *ygg_worker_new (const gchar *directive,
+                           gboolean     remote_content,
+                           GHashTable  *features);
 
 gboolean ygg_worker_connect (YggWorker  *worker,
                              GError    **error);
@@ -161,5 +159,11 @@ gboolean ygg_worker_set_feature (YggWorker    *worker,
                                  const gchar  *key,
                                  gchar        *value,
                                  GError      **error);
+
+gboolean ygg_worker_set_rx_func (YggWorker *worker,
+                                 YggRxFunc  rx);
+
+gboolean ygg_worker_set_event_func (YggWorker    *worker,
+                                    YggEventFunc  event);
 
 G_END_DECLS

@@ -154,7 +154,14 @@ main (gint   argc,
   GHashTable *features = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
   g_hash_table_insert (features, (gpointer) "version", (gpointer) "1");
 
-  YggWorker *worker = ygg_worker_new ("echo", FALSE, features, handle_rx, handle_event);
+  YggWorker *worker = ygg_worker_new ("echo", FALSE, features);
+  if (!ygg_worker_set_rx_func (worker, handle_rx)) {
+    g_error ("failed to set rx_func");
+  }
+  if (!ygg_worker_set_event_func (worker, handle_event)) {
+    g_error ("failed to set event_func");
+  }
+
   GError *error = NULL;
   if (!ygg_worker_connect (worker, &error)) {
     g_error ("%s", error->message);
