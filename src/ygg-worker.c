@@ -558,6 +558,19 @@ ygg_worker_connect (YggWorker *self, GError **error)
   return TRUE;
 }
 
+/**
+ * ygg_worker_transmit_finish:
+ * @worker: A #YggWorker instance.
+ * @res: A #GAsyncResult.
+ * @response_code: (out): An integer status code.
+ * @response_metadata: (out) (element-type utf8 utf8): A map of key/value pairs.
+ * @response_data: (out): Data received in response to the transmit.
+ * @error: (out) (nullable): The return location for a recoverable error.
+ *
+ * Finishes transmitting the data started with ygg_worker_transmit().
+ *
+ * Returns: A %TRUE on success, %FALSE on error.
+ */
 gboolean
 ygg_worker_transmit_finish (YggWorker     *self,
                             GAsyncResult  *res,
@@ -606,17 +619,17 @@ ygg_worker_transmit_finish (YggWorker     *self,
  * @addr: (transfer full): destination address of the data to be transmitted.
  * @id: (transfer full): a UUID.
  * @response_to: (transfer full) (nullable): a UUID the data is in response to
- *               or NULL.
+ *               or %NULL.
  * @metadata: (transfer full) (nullable) (element-type utf8 utf8): a #GHashTable
  *            containing key-value pairs associated with the data or NULL.
  * @data: (transfer full): the data.
- * @cancellable: (nullable): a #GCancellable or NULL.
- * @callback: a #GAsyncReadyCallback to be invoked when the task is complete.
+ * @cancellable: (nullable): a #GCancellable or %NULL.
+ * @callback: (scope async): A #GAsyncReadyCallback to be invoked when the task is complete.
  * @user_data: (nullable): optional data passed into @callback.
  *
  * Invokes the com.redhat.Yggdrasil1.Dispatcher1.Transmit D-Bus method
  * asynchronously. To receive the response from the D-Bus method, call
- * @ygg_worker_transmit_finish.
+ * ygg_worker_transmit_finish().
  */
 void
 ygg_worker_transmit (YggWorker           *self,
@@ -636,6 +649,17 @@ ygg_worker_transmit (YggWorker           *self,
   g_task_attach_source (task, source, invoke_tx);
 }
 
+/**
+ * ygg_worker_emit_event:
+ * @worker: A #YggWorker instance.
+ * @event: The #YggWorkerEvent to emit.
+ * @message: (nullable): An optional message to include with the emitted signal.
+ * @error: (nullable): Return location for a recoverable error.
+ *
+ * Emits a com.redhat.Yggdrasil1.Worker1.Event signal.
+ *
+ * Returns: %TRUE if successful, %FALSE otherwise.
+ */
 gboolean ygg_worker_emit_event (YggWorker       *self,
                                 YggWorkerEvent   event,
                                 const gchar     *message,
