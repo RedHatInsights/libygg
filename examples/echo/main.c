@@ -78,7 +78,8 @@ transmit_done (GObject      *source_object,
   }
 }
 
-static void handle_event (YggDispatcherEvent event)
+static void handle_event (YggDispatcherEvent event,
+                          gpointer           user_data)
 {
   switch (event) {
   case YGG_DISPATCHER_EVENT_RECEIVED_DISCONNECT:
@@ -148,7 +149,7 @@ main (gint   argc,
   if (!ygg_worker_set_rx_func (worker, handle_rx, NULL, NULL)) {
     g_error ("failed to set rx_func");
   }
-  if (!ygg_worker_set_event_func (worker, handle_event)) {
+  if (!ygg_worker_set_event_func (worker, handle_event, NULL, NULL)) {
     g_error ("failed to set event_func");
   }
 

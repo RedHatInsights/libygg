@@ -119,12 +119,14 @@ typedef void (* YggRxFunc) (YggWorker  *worker,
 /**
  * YggEventFunc:
  * @event: The event received from the dispatcher.
+ * @user_data: (closure): Data passed to the function when it is invoked.
  *
  * Signature for callback function used in ygg_worker_set_event_func(). It is
  * invoked each time the worker receives a
  * com.redhat.Yggdrasil1.Dispatcher1.Event signal.
  */
-typedef void (* YggEventFunc) (YggDispatcherEvent event);
+typedef void (* YggEventFunc) (YggDispatcherEvent event,
+                               gpointer           user_data);
 
 YggWorker *ygg_worker_new (const gchar *directive,
                            gboolean     remote_content,
@@ -169,7 +171,9 @@ gboolean ygg_worker_set_rx_func (YggWorker      *worker,
                                  gpointer        user_data,
                                  GDestroyNotify  notify);
 
-gboolean ygg_worker_set_event_func (YggWorker    *worker,
-                                    YggEventFunc  event);
+gboolean ygg_worker_set_event_func (YggWorker      *worker,
+                                    YggEventFunc    func,
+                                    gpointer        user_data,
+                                    GDestroyNotify  notify);
 
 G_END_DECLS

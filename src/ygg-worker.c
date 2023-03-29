@@ -151,7 +151,9 @@ typedef struct
   YggRxFunc      rx_func;
   gpointer       rx_func_user_data;
   GDestroyNotify rx_func_data_notify;
-  YggEventFunc   event_rx;
+  YggEventFunc   event_func;
+  gpointer       event_func_user_data;
+  GDestroyNotify event_func_data_notify;
   guint          bus_id;
   gchar         *bus_name;
   gchar         *object_path;
@@ -439,7 +441,7 @@ handle_signal (GDBusConnection *connection,
   YggDispatcherEvent event;
   g_variant_get (parameters, "(u)", &event);
 
-  priv->event_rx (event);
+  priv->event_func (event, priv->event_func_user_data);
 }
 
 
@@ -771,8 +773,8 @@ ygg_worker_set_feature (YggWorker    *self,
  * @worker: A #YggWorker instance.
  * @func: (scope notified) (closure user_data): A #YggRxFunc callback.
  * @user_data: User data passed to @func when it is invoked.
- * @notify: A #GDestroyNotify that is called when the reference to @func is
- * dropped.
+ * @notify (nullable): A #GDestroyNotify that is called when the reference to
+ * @func is dropped.
  *
  * Stores a pointer to a handler function that is invoked whenever data is
  * received by the worker.
@@ -801,7 +803,10 @@ ygg_worker_set_rx_func (YggWorker      *self,
 /**
  * ygg_worker_set_event_func:
  * @worker: A #YggWorker instance.
- * @event: (scope call): A #YggEventFunc callback.
+ * @func: (scope notified) (closure user_data): A #YggEventFunc callback.
+ * @user_data: User data passed to @func when it is invoked.
+ * @notify (nullable): A #GDestroyNotify that is called when the reference to
+ * @func is dropped.
  *
  * Stores a pointer to a handler function that is invoked whenever an event
  * signal is received by the worker.
@@ -809,11 +814,21 @@ ygg_worker_set_rx_func (YggWorker      *self,
  * Returns: %TRUE if setting the function handler succeeded.
  */
 gboolean
-ygg_worker_set_event_func (YggWorker    *self,
-                           YggEventFunc  event)
+ygg_worker_set_event_func (YggWorker      *self,
+                           YggEventFunc    func,
+                           gpointer        user_data,
+                           GDestroyNotify  notify)
 {
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
-  priv->event_rx = event;
+
+  if (priv->event_func_data_notify != NULL) {
+    priv->event_func_data_notify (priv->event_func_user_data);
+  }
+
+  priv->event_func = func;
+  priv->event_func_user_data = user_data;
+  priv->event_func_data_notify = notify;
+
   return TRUE;
 }
 
@@ -825,6 +840,10 @@ ygg_worker_dispose (GObject *object)
 
   if (priv->rx_func_data_notify != NULL) {
     priv->rx_func_data_notify (priv->rx_func_user_data);
+  }
+
+  if (priv->event_func_data_notify != NULL) {
+    priv->event_func_data_notify (priv->event_func_user_data);
   }
 }
 
