@@ -89,8 +89,13 @@ typedef enum
   YGG_DISPATCHER_EVENT_CONNECTION_RESTORED
 } YggDispatcherEvent;
 
+#define YGG_TYPE_WORKER (ygg_worker_get_type())
+
+G_DECLARE_FINAL_TYPE (YggWorker, ygg_worker, YGG, WORKER, GObject)
+
 /**
  * YggRxFunc:
+ * @worker: (transfer none): A #YggWorker instance.
  * @addr: (transfer full): destination address of the data to be transmitted.
  * @id: (transfer full): a UUID.
  * @response_to: (transfer full) (nullable): a UUID the data is in response to
@@ -98,12 +103,13 @@ typedef enum
  * @metadata: (transfer full) (nullable) (element-type utf8 utf8): a #GHashTable
  *            containing key-value pairs associated with the data or %NULL.
  * @data: (transfer full): the data.
- * @user_data: (transfer none) (closure): The owning #YggWorker instance.
+ * @user_data: (closure): Data passed to the function when it is invoked.
  *
  * Signature for callback function used in ygg_worker_set_rx_func(). It is
  * invoked each time the worker receives data from the dispatcher.
  */
-typedef void (* YggRxFunc) (gchar      *addr,
+typedef void (* YggRxFunc) (YggWorker  *worker,
+                            gchar      *addr,
                             gchar      *id,
                             gchar      *response_to,
                             GHashTable *metadata,
@@ -119,10 +125,6 @@ typedef void (* YggRxFunc) (gchar      *addr,
  * com.redhat.Yggdrasil1.Dispatcher1.Event signal.
  */
 typedef void (* YggEventFunc) (YggDispatcherEvent event);
-
-#define YGG_TYPE_WORKER (ygg_worker_get_type())
-
-G_DECLARE_FINAL_TYPE (YggWorker, ygg_worker, YGG, WORKER, GObject)
 
 YggWorker *ygg_worker_new (const gchar *directive,
                            gboolean     remote_content,
@@ -162,8 +164,10 @@ gboolean ygg_worker_set_feature (YggWorker    *worker,
                                  gchar        *value,
                                  GError      **error);
 
-gboolean ygg_worker_set_rx_func (YggWorker *worker,
-                                 YggRxFunc  rx);
+gboolean ygg_worker_set_rx_func (YggWorker      *worker,
+                                 YggRxFunc       func,
+                                 gpointer        user_data,
+                                 GDestroyNotify  notify);
 
 gboolean ygg_worker_set_event_func (YggWorker    *worker,
                                     YggEventFunc  event);

@@ -97,27 +97,17 @@ static void handle_event (YggDispatcherEvent event)
 }
 
 /**
- * handle_rx:
- * @addr: (transfer full): destination address of the data to be transmitted.
- * @id: (transfer full): a UUID.
- * @response_to: (transfer full) (nullable): a UUID the data is in response to
- *               or NULL.
- * @metadata: (transfer full) (nullable) (element-type utf8 utf8): a #GHashTable
- *            containing key-value pairs associated with the data or NULL.
- * @data: (transfer full): the data.
- *
- * A #YggRxFunc callback that is given to ygg_worker_new(). This
- * callback is invoked each time the worker receives data from the dispatcher.
+ * A #YggRxFunc callback that is invoked each time the worker receives data
+ * from the dispatcher.
  */
-static void handle_rx (gchar *addr,
-                       gchar *id,
-                       gchar *response_to,
+static void handle_rx (YggWorker  *worker,
+                       gchar      *addr,
+                       gchar      *id,
+                       gchar      *response_to,
                        GHashTable *metadata,
-                       GBytes *data,
-                       gpointer user_data)
+                       GBytes     *data,
+                       gpointer    user_data)
 {
-  YggWorker *worker = YGG_WORKER (user_data);
-
   g_debug ("handle_rx");
   g_debug ("addr = %s", addr);
   g_debug ("id = %s", id);
@@ -155,7 +145,7 @@ main (gint   argc,
   g_hash_table_insert (features, (gpointer) "version", (gpointer) "1");
 
   YggWorker *worker = ygg_worker_new ("echo", FALSE, features);
-  if (!ygg_worker_set_rx_func (worker, handle_rx)) {
+  if (!ygg_worker_set_rx_func (worker, handle_rx, NULL, NULL)) {
     g_error ("failed to set rx_func");
   }
   if (!ygg_worker_set_event_func (worker, handle_event)) {

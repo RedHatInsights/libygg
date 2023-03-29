@@ -145,14 +145,16 @@ struct _YggWorker
 
 typedef struct
 {
-  gchar       *directive;
-  gboolean     remote_content;
-  GHashTable  *features;
-  YggRxFunc    rx;
-  YggEventFunc event_rx;
-  guint        bus_id;
-  gchar       *bus_name;
-  gchar       *object_path;
+  gchar         *directive;
+  gboolean       remote_content;
+  GHashTable    *features;
+  YggRxFunc      rx_func;
+  gpointer       rx_func_user_data;
+  GDestroyNotify rx_func_data_notify;
+  YggEventFunc   event_rx;
+  guint          bus_id;
+  gchar         *bus_name;
+  gchar         *object_path;
 } YggWorkerPrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE (YggWorker, ygg_worker, G_TYPE_OBJECT)
@@ -231,8 +233,8 @@ invoke_rx (gpointer user_data)
     }
   }
 
-  g_assert_nonnull (priv->rx);
-  priv->rx (addr, id, response_to, metadata, g_variant_get_data_as_bytes (data), self);
+  g_assert_nonnull (priv->rx_func);
+  priv->rx_func (self, addr, id, response_to, metadata, g_variant_get_data_as_bytes (data), priv->rx_func_user_data);
 
   g_assert_null (err);
   if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, "", &err)) {
@@ -531,7 +533,7 @@ gboolean
 ygg_worker_connect (YggWorker *self, GError **error)
 {
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
-  g_assert_nonnull (priv->rx);
+  g_assert_nonnull (priv->rx_func);
 
   if (g_regex_match_simple ("-", priv->directive, 0, 0)) {
     if (error != NULL) {
@@ -767,7 +769,10 @@ ygg_worker_set_feature (YggWorker    *self,
 /**
  * ygg_worker_set_rx_func:
  * @worker: A #YggWorker instance.
- * @rx: (scope call): A #YggRxFunc callback.
+ * @func: (scope notified) (closure user_data): A #YggRxFunc callback.
+ * @user_data: User data passed to @func when it is invoked.
+ * @notify: A #GDestroyNotify that is called when the reference to @func is
+ * dropped.
  *
  * Stores a pointer to a handler function that is invoked whenever data is
  * received by the worker.
@@ -775,11 +780,21 @@ ygg_worker_set_feature (YggWorker    *self,
  * Returns: %TRUE if setting the function handler succeeded.
  */
 gboolean
-ygg_worker_set_rx_func (YggWorker *self,
-                        YggRxFunc  rx)
+ygg_worker_set_rx_func (YggWorker      *self,
+                        YggRxFunc       func,
+                        gpointer        user_data,
+                        GDestroyNotify  notify)
 {
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
-  priv->rx = rx;
+
+  if (priv->rx_func_data_notify != NULL) {
+    priv->rx_func_data_notify (priv->rx_func_user_data);
+  }
+
+  priv->rx_func = func;
+  priv->rx_func_user_data = user_data;
+  priv->rx_func_data_notify = notify;
+
   return TRUE;
 }
 
@@ -800,6 +815,17 @@ ygg_worker_set_event_func (YggWorker    *self,
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
   priv->event_rx = event;
   return TRUE;
+}
+
+static void
+ygg_worker_dispose (GObject *object)
+{
+  YggWorker *self = (YggWorker *)object;
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+
+  if (priv->rx_func_data_notify != NULL) {
+    priv->rx_func_data_notify (priv->rx_func_user_data);
+  }
 }
 
 static void
@@ -887,6 +913,7 @@ ygg_worker_class_init (YggWorkerClass *klass)
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
   object_class->constructed = ygg_worker_constructed;
+  object_class->dispose = ygg_worker_dispose;
   object_class->finalize = ygg_worker_finalize;
   object_class->get_property = ygg_worker_get_property;
   object_class->set_property = ygg_worker_set_property;
