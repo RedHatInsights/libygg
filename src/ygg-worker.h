@@ -23,6 +23,7 @@
 
 #include <glib-object.h>
 #include <gio/gio.h>
+#include "ygg-metadata.h"
 
 G_BEGIN_DECLS
 
@@ -100,21 +101,20 @@ G_DECLARE_FINAL_TYPE (YggWorker, ygg_worker, YGG, WORKER, GObject)
  * @id: (transfer full): a UUID.
  * @response_to: (transfer full) (nullable): a UUID the data is in response to
  *               or %NULL.
- * @metadata: (transfer full) (nullable) (element-type utf8 utf8): a #GHashTable
- *            containing key-value pairs associated with the data or %NULL.
+ * @metadata: (transfer full) (nullable): A set of key/value pairs, or %NULL.
  * @data: (transfer full): the data.
  * @user_data: (closure): Data passed to the function when it is invoked.
  *
  * Signature for callback function used in ygg_worker_set_rx_func(). It is
  * invoked each time the worker receives data from the dispatcher.
  */
-typedef void (* YggRxFunc) (YggWorker  *worker,
-                            gchar      *addr,
-                            gchar      *id,
-                            gchar      *response_to,
-                            GHashTable *metadata,
-                            GBytes     *data,
-                            gpointer    user_data);
+typedef void (* YggRxFunc) (YggWorker   *worker,
+                            gchar       *addr,
+                            gchar       *id,
+                            gchar       *response_to,
+                            YggMetadata *metadata,
+                            GBytes      *data,
+                            gpointer     user_data);
 
 /**
  * YggEventFunc:
@@ -130,7 +130,7 @@ typedef void (* YggEventFunc) (YggDispatcherEvent event,
 
 YggWorker *ygg_worker_new (const gchar *directive,
                            gboolean     remote_content,
-                           GHashTable  *features);
+                           YggMetadata *features);
 
 gboolean ygg_worker_connect (YggWorker  *worker,
                              GError    **error);
@@ -139,7 +139,7 @@ void ygg_worker_transmit (YggWorker           *worker,
                           gchar               *addr,
                           gchar               *id,
                           gchar               *response_to,
-                          GHashTable          *metadata,
+                          YggMetadata         *metadata,
                           GBytes              *data,
                           GCancellable        *cancellable,
                           GAsyncReadyCallback  callback,
@@ -148,7 +148,7 @@ void ygg_worker_transmit (YggWorker           *worker,
 gboolean ygg_worker_transmit_finish (YggWorker     *worker,
                                      GAsyncResult  *res,
                                      gint          *response_code,
-                                     GHashTable   **response_metadata,
+                                     YggMetadata  **response_metadata,
                                      GBytes       **response_data,
                                      GError       **error);
 
@@ -157,9 +157,9 @@ gboolean ygg_worker_emit_event (YggWorker       *worker,
                                 const gchar     *message,
                                 GError         **error);
 
-gchar * ygg_worker_get_feature (YggWorker    *worker,
-                                const gchar  *key,
-                                GError      **error);
+const gchar * ygg_worker_get_feature (YggWorker    *worker,
+                                      const gchar  *key,
+                                      GError      **error);
 
 gboolean ygg_worker_set_feature (YggWorker    *worker,
                                  const gchar  *key,

@@ -76,8 +76,7 @@ receive_data_release (ReceiveData *data)
  * @id: a UUID.
  * @response_to: (nullable): a UUID the data is in response to
  *               or NULL.
- * @metadata: (nullable) (element-type utf8 utf8): a #GHashTable
- *            containing key-value pairs associated with the data or NULL.
+ * @metadata: (nullable) : Key/value pairs associated with the data or %NULL.
  * @data: the data.
  *
  * A data-only-struct owning data needed to execute invoke_tx().
@@ -86,7 +85,7 @@ typedef struct {
   gchar *addr;
   gchar *id;
   gchar *response_to;
-  GHashTable *metadata;
+  YggMetadata *metadata;
   GBytes *data;
 } TransmitData;
 
@@ -95,9 +94,9 @@ typedef struct {
  * @addr: (transfer full): destination address of the data to be transmitted.
  * @id: (transfer full): a UUID.
  * @response_to: (transfer full) (nullable): a UUID the data is in response to
- *               or NULL.
- * @metadata: (transfer full) (nullable) (element-type utf8 utf8): a #GHashTable
- *            containing key-value pairs associated with the data or NULL.
+ *               or %NULL.
+ * @metadata: (transfer full) (nullable): Key-value pairs associated with the
+ * data or %NULL.
  * @data: (transfer full): the data.
  *
  * Allocates and returns a new #TransmitData instance.
@@ -105,7 +104,11 @@ typedef struct {
  * Returns: (transfer full): A newly allocated #TransmitData.
  */
 static TransmitData*
-transmit_data_new (gchar *addr, gchar *id, gchar *response_to, GHashTable *metadata, GBytes *data)
+transmit_data_new (gchar       *addr,
+                   gchar       *id,
+                   gchar       *response_to,
+                   YggMetadata *metadata,
+                   GBytes      *data)
 {
   TransmitData *transmit_data = g_rc_box_new (TransmitData);
   transmit_data->addr = addr;
@@ -128,7 +131,7 @@ transmit_data_free (TransmitData *transmit_data)
   g_free (transmit_data->addr);
   g_free (transmit_data->id);
   g_free (transmit_data->response_to);
-  g_hash_table_destroy (transmit_data->metadata);
+  g_object_unref (transmit_data->metadata);
   g_bytes_unref (transmit_data->data);
   g_rc_box_release (transmit_data);
 }
@@ -147,7 +150,7 @@ typedef struct
 {
   gchar         *directive;
   gboolean       remote_content;
-  GHashTable    *features;
+  YggMetadata   *features;
   YggRxFunc      rx_func;
   gpointer       rx_func_user_data;
   GDestroyNotify rx_func_data_notify;
@@ -169,6 +172,15 @@ enum {
 };
 
 static GParamSpec *properties [N_PROPS];
+
+static void
+metadata_foreach_builder_add (const gchar *key,
+                              const gchar *val,
+                              gpointer     user_data)
+{
+  GVariantBuilder *builder = (GVariantBuilder *) user_data;
+  g_variant_builder_add (builder, "{ss}", key, val);
+}
 
 /**
  * invoke_rx:
@@ -208,19 +220,12 @@ invoke_rx (gpointer user_data)
 
   g_autoptr (GVariant) metadata_value = NULL;
   metadata_value = g_variant_iter_next_value (&iter);
-  g_debug("metadata_value = %s", g_variant_print (metadata_value, TRUE));
-  GVariantIter metadata_iter;
-  g_variant_iter_init (&metadata_iter, metadata_value);
-  GHashTable *metadata = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
-  GVariant *child;
-  while ((child = g_variant_iter_next_value (&metadata_iter))) {
-    gchar *key;
-    gchar *value;
-
-    g_variant_get (child, "{ss}", &key, &value);
-    g_hash_table_insert (metadata, key, value);
-
-    g_variant_unref (child);
+  g_debug ("metadata_value = %s", g_variant_print (metadata_value, TRUE));
+  g_assert_null (err);
+  YggMetadata *metadata = ygg_metadata_new_from_variant (metadata_value, &err);
+  if (err != NULL) {
+    g_critical ("failed to create metadata from variant: %s", err->message);
+    goto out;
   }
 
   g_autoptr (GVariant) data = NULL;
@@ -315,14 +320,8 @@ invoke_tx (gpointer user_data)
   g_variant_builder_add (&builder, "s", task_data->addr);
   g_variant_builder_add (&builder, "s", task_data->id);
   g_variant_builder_add (&builder, "s", task_data->response_to);
-  g_variant_builder_open (&builder, G_VARIANT_TYPE ("a{ss}"));
-  GHashTableIter iter;
-  g_hash_table_iter_init (&iter, task_data->metadata);
-  gpointer key = NULL;
-  gpointer value = NULL;
-  while (g_hash_table_iter_next (&iter, &key, &value)) {
-    g_variant_builder_add (&builder, "{ss}", (gchar *) key, (gchar *) value);
-  }
+  g_variant_builder_open (&builder, G_VARIANT_TYPE( "a{ss}"));
+  ygg_metadata_foreach (task_data->metadata, metadata_foreach_builder_add, &builder);
   g_variant_builder_close (&builder);
   g_variant_builder_add_value (&builder, g_variant_new_bytestring (g_bytes_get_data (task_data->data, NULL)));
   GVariant *transmit_args = g_variant_builder_end (&builder);
@@ -368,6 +367,15 @@ handle_method_call (GDBusConnection       *connection,
   }
 }
 
+static void
+metadata_foreach_builder_add_value (const gchar *key,
+                                    const gchar *val,
+                                    gpointer     user_data)
+{
+  GVariantBuilder *builder = (GVariantBuilder *) user_data;
+  g_variant_builder_add (builder, "{sv}", key, g_variant_new ("s", val));
+}
+
 static GVariant*
 handle_get_property (GDBusConnection  *connection,
                      const gchar      *sender,
@@ -388,16 +396,8 @@ handle_get_property (GDBusConnection  *connection,
   if (g_strcmp0 (property_name, "Features") == 0) {
     g_assert_nonnull (priv->features);
     GVariantBuilder builder;
-    g_variant_builder_init (&builder, G_VARIANT_TYPE("a{ss}"));
-
-    GHashTableIter iter;
-    g_hash_table_iter_init (&iter, priv->features);
-    gpointer k = NULL;
-    gpointer v = NULL;
-    while (g_hash_table_iter_next (&iter, &k, &v)) {
-      g_variant_builder_add (&builder, "{ss}", (gchar *) k, (gchar *) v);
-    }
-
+    g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
+    ygg_metadata_foreach (priv->features, metadata_foreach_builder_add_value, &builder);
     value = g_variant_builder_end (&builder);
   }
 
@@ -500,8 +500,8 @@ on_name_lost (GDBusConnection *connection,
  * ygg_worker_new: (constructor)
  * @directive: (transfer none): The worker directive name.
  * @remote_content: The worker requires content from a remote URL.
- * @features: (transfer full) (element-type utf8 utf8) (nullable): An initial table of
- *            values to use as the worker's features map.
+ * @features: (transfer full) (nullable): An initial table of values to use as
+ * the worker's features map.
  *
  * Creates a new #YggWorker instance.
  *
@@ -510,7 +510,7 @@ on_name_lost (GDBusConnection *connection,
 YggWorker *
 ygg_worker_new (const gchar *directive,
                 gboolean     remote_content,
-                GHashTable  *features)
+                YggMetadata *features)
 {
   return g_object_new (YGG_TYPE_WORKER,
                        "directive", directive,
@@ -567,7 +567,7 @@ ygg_worker_connect (YggWorker *self, GError **error)
  * @worker: A #YggWorker instance.
  * @res: A #GAsyncResult.
  * @response_code: (out): An integer status code.
- * @response_metadata: (out) (element-type utf8 utf8): A map of key/value pairs.
+ * @response_metadata: (out): A map of key/value pairs.
  * @response_data: (out): Data received in response to the transmit.
  * @error: (out) (nullable): The return location for a recoverable error.
  *
@@ -579,7 +579,7 @@ gboolean
 ygg_worker_transmit_finish (YggWorker     *self,
                             GAsyncResult  *res,
                             gint          *response_code,
-                            GHashTable   **response_metadata,
+                            YggMetadata  **response_metadata,
                             GBytes       **response_data,
                             GError       **error)
 {
@@ -598,20 +598,16 @@ ygg_worker_transmit_finish (YggWorker     *self,
   GVariantIter iter;
   g_variant_iter_init (&iter, response);
   g_variant_iter_next (&iter, "i", response_code);
-  GVariant *response_metadata_value = NULL;
-  response_metadata_value = g_variant_iter_next_value (&iter);
-  GVariantIter metadata_iter;
-  g_variant_iter_init (&metadata_iter, response_metadata_value);
-  gchar *key = NULL;
-  gchar *value = NULL;
-  *response_metadata = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
-  while (g_variant_iter_next (&metadata_iter, "{ss}", &key, &value)) {
-    g_hash_table_insert (*response_metadata, key, value);
+
+  g_assert_null (err);
+  *response_metadata = ygg_metadata_new_from_variant (g_variant_iter_next_value(&iter), &err);
+  if (err != NULL && error != NULL) {
+    g_propagate_error (error, err);
+    return FALSE;
   }
-  GVariant *data_value;
-  data_value = g_variant_iter_next_value (&iter);
+
   gsize len = 0;
-  gchar *data = g_variant_dup_bytestring (data_value, &len);
+  gchar *data = g_variant_dup_bytestring (g_variant_iter_next_value (&iter), &len);
   *response_data = g_bytes_new_take (data, len);
 
   return *response_code >= 0;
@@ -623,9 +619,9 @@ ygg_worker_transmit_finish (YggWorker     *self,
  * @addr: (transfer full): destination address of the data to be transmitted.
  * @id: (transfer full): a UUID.
  * @response_to: (transfer full) (nullable): a UUID the data is in response to
- *               or %NULL.
- * @metadata: (transfer full) (nullable) (element-type utf8 utf8): a #GHashTable
- *            containing key-value pairs associated with the data or NULL.
+ * or %NULL.
+ * @metadata: (transfer full) (nullable): Key-value pairs associated with the
+ * data or %NULL.
  * @data: (transfer full): the data.
  * @cancellable: (nullable): a #GCancellable or %NULL.
  * @callback: (scope async): A #GAsyncReadyCallback to be invoked when the task is complete.
@@ -640,7 +636,7 @@ ygg_worker_transmit (YggWorker           *self,
                      gchar               *addr,
                      gchar               *id,
                      gchar               *response_to,
-                     GHashTable          *metadata,
+                     YggMetadata         *metadata,
                      GBytes              *data,
                      GCancellable        *cancellable,
                      GAsyncReadyCallback  callback,
@@ -698,30 +694,30 @@ gboolean ygg_worker_emit_event (YggWorker       *self,
  *
  * Looks up a value in the features table for @key.
  *
- * Returns: (nullable) (transfer full): The value from the features table.
+ * Returns: (nullable) (transfer none): The value from the features table.
  */
-gchar *
+const gchar *
 ygg_worker_get_feature (YggWorker    *self,
                         const gchar  *key,
                         GError      **error)
 {
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
 
-  gpointer value;
-  if (g_hash_table_lookup_extended (priv->features, key, NULL, &value)) {
-    return (gchar *) value;
+  const gchar *value = ygg_metadata_get (priv->features, key);
+  if (value == NULL) {
+      if (error != NULL) {
+        g_error_new (YGG_WORKER_ERROR, YGG_WORKER_ERROR_MISSING_FEATURE, "no value for key '%s'", key);
+      }
   }
-  if (error != NULL) {
-    g_error_new (YGG_WORKER_ERROR, YGG_WORKER_ERROR_MISSING_FEATURE, "no value for key '%s'", key);
-  }
-  return NULL;
+
+  return value;
 }
 
 /**
  * ygg_worker_set_feature:
  * @worker: A #YggWorker instance.
  * @key: (transfer none): The key to set in the features table.
- * @value: (transfer full): The value to set in the features table.
+ * @value: (transfer none): The value to set in the features table.
  * @error: The return location for an error.
  *
  * Stores @value in the features table for @key.
@@ -744,19 +740,13 @@ ygg_worker_set_feature (YggWorker    *self,
     return FALSE;
   }
 
-  gboolean exists = g_hash_table_insert (priv->features, g_strdup (key), value);
+  gboolean exists = ygg_metadata_set (priv->features, key, value);
 
   GVariantBuilder builder;
   g_variant_builder_init (&builder, G_VARIANT_TYPE ("(sa{sv}as)"));
   g_variant_builder_add (&builder, "s", "com.redhat.Yggdrasil1.Worker1");
   g_variant_builder_open (&builder, G_VARIANT_TYPE ("a{sv}"));
-  GHashTableIter iter;
-  g_hash_table_iter_init (&iter, priv->features);
-  gpointer fkey = NULL;
-  gpointer fvalue = NULL;
-  while (g_hash_table_iter_next (&iter, &fkey, &fvalue)) {
-    g_variant_builder_add (&builder, "{sv}", (gchar *) fkey, g_variant_new_string ((gchar *) fvalue));
-  }
+  ygg_metadata_foreach (priv->features, metadata_foreach_builder_add_value, &builder);
   g_variant_builder_close (&builder);
   g_variant_builder_add_value (&builder, g_variant_new_array (G_VARIANT_TYPE_STRING, NULL, 0));
   GVariant *parameters = g_variant_builder_end (&builder);
@@ -833,6 +823,19 @@ ygg_worker_set_event_func (YggWorker      *self,
 }
 
 static void
+ygg_worker_constructed (GObject *object)
+{
+  YggWorker *self = YGG_WORKER (object);
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+
+  if (priv->features == NULL) {
+    priv->features = ygg_metadata_new ();
+  }
+
+  G_OBJECT_CLASS (ygg_worker_parent_class)->constructed (object);
+}
+
+static void
 ygg_worker_dispose (GObject *object)
 {
   YggWorker *self = (YggWorker *)object;
@@ -845,6 +848,10 @@ ygg_worker_dispose (GObject *object)
   if (priv->event_func_data_notify != NULL) {
     priv->event_func_data_notify (priv->event_func_user_data);
   }
+
+  g_object_unref (priv->features);
+
+  G_OBJECT_CLASS (ygg_worker_parent_class)->dispose (object);
 }
 
 static void
@@ -853,7 +860,6 @@ ygg_worker_finalize (GObject *object)
   YggWorker *self = (YggWorker *)object;
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
 
-  g_hash_table_unref (priv->features);
   g_free (priv->directive);
   g_free (priv->bus_name);
   g_free (priv->object_path);
@@ -879,7 +885,7 @@ ygg_worker_get_property (GObject    *object,
       g_value_set_boolean (value, priv->remote_content);
       break;
     case PROP_FEATURES:
-      g_value_set_boxed (value, priv->features);
+      g_value_set_object (value, priv->features);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -906,24 +912,13 @@ ygg_worker_set_property (GObject      *object,
       break;
     case PROP_FEATURES:
       if (priv->features) {
-        g_hash_table_unref (priv->features);
+        g_object_unref (priv->features);
       }
-      priv->features = (GHashTable *) g_value_get_boxed (value);
+      priv->features = YGG_METADATA (g_value_get_object (value));
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
     }
-}
-
-static void
-ygg_worker_constructed (GObject *object)
-{
-  YggWorker *self = YGG_WORKER (object);
-  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
-
-  if (priv->features == NULL) {
-    priv->features = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
-  }
 }
 
 static void
@@ -960,7 +955,7 @@ ygg_worker_class_init (YggWorkerClass *klass)
    * An optional mapping of key/value string pairs that the worker may use to
    * communicate state with the dispatcher.
    */
-  properties[PROP_FEATURES] = g_param_spec_boxed ("features", NULL, NULL, G_TYPE_HASH_TABLE,
+  properties[PROP_FEATURES] = g_param_spec_object ("features", NULL, NULL, YGG_TYPE_METADATA,
                                                   G_PARAM_READWRITE|G_PARAM_CONSTRUCT_ONLY);
   g_object_class_install_properties (object_class, N_PROPS, properties);
 
@@ -1008,6 +1003,5 @@ ygg_worker_init (YggWorker *self)
 
   priv->directive = NULL;
   priv->remote_content = FALSE;
-  priv->features = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
 }
 

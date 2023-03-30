@@ -23,9 +23,9 @@
 #include "ygg.h"
 
 static void
-hash_foreach (gpointer key,
-              gpointer value,
-              gpointer user_data)
+foreach (const gchar *key,
+              const gchar *value,
+              gpointer     user_data)
 {
   g_debug ("metadata[%s] = %s", (gchar *) key, (gchar *) value);
 }
@@ -42,7 +42,7 @@ transmit_done (GObject      *source_object,
 {
   YggWorker *worker = YGG_WORKER (source_object);
   gint response_code = G_MININT;
-  GHashTable *response_metadata = NULL;
+  YggMetadata *response_metadata = NULL;
   GBytes *response_data = NULL;
   GError *err = NULL;
 
@@ -63,7 +63,7 @@ transmit_done (GObject      *source_object,
   g_assert_nonnull (response_data);
 
   g_print ("response_code = %i\n", response_code);
-  g_hash_table_foreach (response_metadata, hash_foreach, NULL);
+  ygg_metadata_foreach (response_metadata, foreach, NULL);
   if (g_bytes_get_size (response_data) > 0) {
     g_print ("response_data = %s", (gchar *) g_bytes_get_data (response_data, NULL));
   }
@@ -101,19 +101,19 @@ static void handle_event (YggDispatcherEvent event,
  * A #YggRxFunc callback that is invoked each time the worker receives data
  * from the dispatcher.
  */
-static void handle_rx (YggWorker  *worker,
-                       gchar      *addr,
-                       gchar      *id,
-                       gchar      *response_to,
-                       GHashTable *metadata,
-                       GBytes     *data,
-                       gpointer    user_data)
+static void handle_rx (YggWorker   *worker,
+                       gchar       *addr,
+                       gchar       *id,
+                       gchar       *response_to,
+                       YggMetadata *metadata,
+                       GBytes      *data,
+                       gpointer     user_data)
 {
   g_debug ("handle_rx");
   g_debug ("addr = %s", addr);
   g_debug ("id = %s", id);
   g_debug ("response_to = %s", response_to);
-  g_hash_table_foreach (metadata, hash_foreach, NULL);
+  ygg_metadata_foreach (metadata, foreach, NULL);
   g_debug ("data = %s", (guint8 *) g_bytes_get_data (data, NULL));
 
 
@@ -142,8 +142,8 @@ main (gint   argc,
 {
   g_set_prgname ("yggdrasil-worker-echo");
 
-  GHashTable *features = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, g_free);
-  g_hash_table_insert (features, (gpointer) "version", (gpointer) "1");
+  YggMetadata *features = ygg_metadata_new ();
+  ygg_metadata_set (features, "version", "1");
 
   YggWorker *worker = ygg_worker_new ("echo", FALSE, features);
   if (!ygg_worker_set_rx_func (worker, handle_rx, NULL, NULL)) {

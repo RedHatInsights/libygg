@@ -1,11 +1,13 @@
 api_version = '0.1'
 
 libygg_sources = [
+  'ygg-metadata.c',
   'ygg-worker.c',
 ]
 
 libygg_headers = [
   'ygg.h',
+  'ygg-metadata.h',
   'ygg-worker.h',
 ]
 
@@ -74,4 +76,23 @@ libygg_gir = gnome.generate_gir(libygg_lib,
              includes: [ 'Gio-2.0' ],
               install: true,
        fatal_warnings: get_option('werror'),
+)
+
+test_sources = [
+  'test-ygg-metadata.c'
+]
+
+test_deps = libygg_deps
+
+test('test-ygg-metadata',
+  executable('test-ygg-metadata',
+    test_sources,
+    dependencies: test_deps,
+    link_with: [libygg_lib],
+  ),
+  env: [
+    'G_TEST_SRCDIR=@0@'.format(meson.current_source_dir()),
+    'G_TEST_BUILDDIR=@0@'.format(meson.current_build_dir()),
+  ],
+  protocol: 'tap',
 )
