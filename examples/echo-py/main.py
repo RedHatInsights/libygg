@@ -20,7 +20,7 @@ def transmit_done(worker, result):
     if success:
         logging.debug("response_code = {}".format(response_code))
         logging.debug("response_metadata = {}".format(response_metadata))
-        logging.debug("response_data = {}".format(response_data))
+        logging.debug("response_data = {}".format(response_data.get_data()))
 
         worker.set_feature("UpdatedAt", datetime.datetime.now().isoformat())
 
@@ -35,7 +35,7 @@ def handle_rx(worker, addr, id, response_to, meta_data, data):
     logging.debug("id = {}".format(id))
     logging.debug("response_to = {}".format(response_to))
     logging.debug("meta_data = {}".format(meta_data))
-    logging.debug("data = {}".format(data))
+    logging.debug("data = {}".format(data.get_data()))
 
     worker.emit_event(Ygg.WorkerEvent.WORKING,
                       "working on data: {}".format(data))
