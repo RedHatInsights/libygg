@@ -53,6 +53,27 @@ test_ygg_metadata_new_from_variant (void)
   g_assert_cmpstr (ygg_metadata_get (metadata, "ke"), ==, "ka");
 }
 
+static void
+_foreach (const gchar *key,
+          const gchar *val,
+          gpointer     user_data)
+{
+  GString *output = (GString *) user_data;
+  g_string_append_printf (output, "'%s' = '%s'\n", key, val);
+}
+
+static void
+test_ygg_metadata_foreach (void)
+{
+  GError *err = NULL;
+  GVariant *variant = g_variant_new_parsed ("{'key': 'val', 'a': 'b'}");
+  g_autoptr (YggMetadata) metadata = ygg_metadata_new_from_variant (variant, &err);
+  g_assert_null (err);
+  GString *output = g_string_new (NULL);
+  ygg_metadata_foreach (metadata, _foreach, output);
+  g_assert_cmpstr (output->str, ==, "'key' = 'val'\n'a' = 'b'\n");
+}
+
 int
 main (int   argc,
       char *argv[])
@@ -63,6 +84,7 @@ main (int   argc,
   g_test_add_func ("/ygg/metadata/set", test_ygg_metadata_set);
   g_test_add_func ("/ygg/metadata/to_variant", test_ygg_metadata_to_variant);
   g_test_add_func ("/ygg/metadata/new_from_variant", test_ygg_metadata_new_from_variant);
+  g_test_add_func ("/ygg/metadata/foreach", test_ygg_metadata_foreach);
 
   return g_test_run ();
 }
