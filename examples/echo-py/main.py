@@ -1,4 +1,5 @@
 #!@python@
+import argparse
 import datetime
 import logging
 import uuid
@@ -17,9 +18,9 @@ def transmit_done(worker, result):
     success, response_code, response_metadata, response_data = worker.transmit_finish(
         result)
     if success:
-        print("response_code = {}".format(response_code))
-        print("response_metadata = {}".format(response_metadata))
-        print("response_data = {}".format(response_data))
+        logging.debug("response_code = {}".format(response_code))
+        logging.debug("response_metadata = {}".format(response_metadata))
+        logging.debug("response_data = {}".format(response_data))
 
         worker.set_feature("UpdatedAt", datetime.datetime.now().isoformat())
 
@@ -29,11 +30,12 @@ def handle_rx(worker, addr, id, response_to, meta_data, data):
         A callback that is invoked each time the worker receives data from the
         dispatcher.
     '''
-    print("addr = {}".format(addr))
-    print("id = {}".format(id))
-    print("response_to = {}".format(response_to))
-    print("meta_data = {}".format(meta_data))
-    print("data = {}".format(data))
+    logging.debug("handle_rx")
+    logging.debug("addr = {}".format(addr))
+    logging.debug("id = {}".format(id))
+    logging.debug("response_to = {}".format(response_to))
+    logging.debug("meta_data = {}".format(meta_data))
+    logging.debug("data = {}".format(data))
 
     worker.emit_event(Ygg.WorkerEvent.WORKING,
                       "working on data: {}".format(data))
@@ -47,7 +49,12 @@ def handle_event(event):
 
 
 if __name__ == "__main__":
-    worker = Ygg.Worker(directive="echo", remote_content=False, features=None)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-l", "--log-level", help="set logging level")
+    args = parser.parse_args()
+    logging.basicConfig(level=args.log_level)
+    worker = Ygg.Worker(directive="echo_py",
+                        remote_content=False, features=None)
     worker.set_rx_func(handle_rx)
     worker.set_event_func(handle_event)
     worker.connect()
