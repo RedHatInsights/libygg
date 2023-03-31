@@ -134,6 +134,11 @@ static void handle_rx (YggWorker   *worker,
                        NULL,
                        (GAsyncReadyCallback) transmit_done,
                        NULL);
+  g_free (addr);
+  g_free (id);
+  g_free (response_to);
+  g_object_unref (metadata);
+  g_bytes_unref (data);
 }
 
 gint
@@ -164,4 +169,5 @@ main (gint   argc,
 
   return 0;
 }
+
 

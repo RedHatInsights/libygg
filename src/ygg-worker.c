@@ -24,116 +24,118 @@
 #include "ygg-worker.h"
 #include "ygg-constants.h"
 
-/**
- * ReceiveData:
- * @worker: The instance of #YggWorker that is operating on the data.
- * @parameters: The parameters as passed to the Dispatch method.
- *
- * A data-only-struct containing worker and parameters necessary to execute
- * invoke_rx().
- */
 typedef struct {
-  YggWorker *worker;
-  GVariant *parameters;
-} ReceiveData;
-
-/**
- * receive_data_new:
- * @worker: (transfer none): The worker instance.
- * @parameters: (transfer full): The parameters of the Dispatch method
- * invocation.
- *
- * Allocates and returns a new #ReceiveData instance.
- *
- * Returns: (transfer full): A newly allocated #ReceiveData.
- */
-static ReceiveData *
-receive_data_new (YggWorker *worker,
-                  GVariant  *parameters)
-{
-  ReceiveData *data = g_rc_box_new0 (ReceiveData);
-  data->worker = worker;
-  data->parameters = parameters;
-  return data;
-}
-
-/**
- * receive_data_release:
- * @data: The instance to be released.
- *
- * Releases @data and its owned members.
- */
-static void
-receive_data_release (ReceiveData *data)
-{
-  g_variant_unref (data->parameters);
-  g_rc_box_release (data);
-}
-
-/**
- * TransmitData:
- * @addr: destination address of the data to be transmitted.
- * @id: a UUID.
- * @response_to: (nullable): a UUID the data is in response to
- *               or NULL.
- * @metadata: (nullable) : Key/value pairs associated with the data or %NULL.
- * @data: the data.
- *
- * A data-only-struct owning data needed to execute invoke_tx().
- */
-typedef struct {
-  gchar *addr;
-  gchar *id;
-  gchar *response_to;
+  YggWorker   *worker;
+  gchar       *addr;
+  gchar       *id;
+  gchar       *response_to;
   YggMetadata *metadata;
-  GBytes *data;
-} TransmitData;
+  GBytes      *data;
+} Message;
 
 /**
- * transmit_data_new:
- * @addr: (transfer full): destination address of the data to be transmitted.
- * @id: (transfer full): a UUID.
- * @response_to: (transfer full) (nullable): a UUID the data is in response to
- *               or %NULL.
- * @metadata: (transfer full) (nullable): Key-value pairs associated with the
- * data or %NULL.
- * @data: (transfer full): the data.
+ * message_new:
+ * @worker: (transfer none): A #YggWorker.
+ * @addr: (transfer full): Address of the message.
+ * @id: (transfer full): ID of the message.
+ * @response_to: (transfer full) (nullable): ID of a message to respond to.
+ * @metadata: (transfer full) (nullable): Key/value pairs to associate with the
+ * message.
+ * @data: (transfer full): The data of the message.
  *
- * Allocates and returns a new #TransmitData instance.
+ * Creates a new #Message.
  *
- * Returns: (transfer full): A newly allocated #TransmitData.
+ * Returns: (transfer full): A newly created #Message;
  */
-static TransmitData*
-transmit_data_new (gchar       *addr,
-                   gchar       *id,
-                   gchar       *response_to,
-                   YggMetadata *metadata,
-                   GBytes      *data)
+static Message *
+message_new (YggWorker   *worker,
+             gchar       *addr,
+             gchar       *id,
+             gchar       *response_to,
+             YggMetadata *metadata,
+             GBytes      *data)
 {
-  TransmitData *transmit_data = g_rc_box_new (TransmitData);
-  transmit_data->addr = addr;
-  transmit_data->id = id;
-  transmit_data->response_to = response_to;
-  transmit_data->metadata = metadata;
-  transmit_data->data = data;
-  return transmit_data;
+  Message *message = g_rc_box_new0 (Message);
+
+  message->worker = worker;
+  message->addr = g_strdup (addr);
+  message->id = g_strdup (id);
+  message->response_to = g_strdup (response_to);
+  message->metadata = g_object_ref (metadata);
+  message->data = g_bytes_ref (data);
+
+  return message;
 }
 
-/**
- * transmit_data_release:
- * @transmit_data: The instance to be released.
- *
- * Releases @transmit_data and its owned members.
- */
-static void
-transmit_data_free (TransmitData *transmit_data)
+static Message *
+message_new_from_variant (YggWorker  *worker,
+                          GVariant   *parameters,
+                          GError    **error)
 {
-  g_free (transmit_data->addr);
-  g_free (transmit_data->id);
-  g_free (transmit_data->response_to);
-  g_object_unref (transmit_data->metadata);
-  g_bytes_unref (transmit_data->data);
-  g_rc_box_release (transmit_data);
+  GError *err = NULL;
+  GVariantIter iter;
+  g_variant_iter_init (&iter, parameters);
+
+  g_autofree gchar *addr = NULL;
+  g_variant_iter_next (&iter, "s", &addr);
+
+  g_autofree gchar *id = NULL;
+  g_variant_iter_next (&iter, "s", &id);
+
+  g_autofree gchar *response_to = NULL;
+  g_variant_iter_next (&iter, "s", &response_to);
+
+  YggMetadata *metadata = ygg_metadata_new_from_variant (g_variant_iter_next_value (&iter), &err);
+  if (err != NULL && error != NULL) {
+    g_critical ("failed to create metadata from variant: %s", err->message);
+    g_propagate_error (error, err);
+    return NULL;
+  }
+
+  GBytes *data = g_variant_get_data_as_bytes (g_variant_iter_next_value (&iter));
+
+  Message *msg = message_new (worker,
+                              addr,
+                              id,
+                              response_to,
+                              metadata,
+                              data);
+  return msg;
+}
+
+static void
+metadata_foreach_builder_add (const gchar *key,
+                              const gchar *val,
+                              gpointer     user_data)
+{
+  GVariantBuilder *builder = (GVariantBuilder *) user_data;
+  g_variant_builder_add (builder, "{ss}", key, val);
+}
+
+static GVariant *
+message_to_variant (Message *msg)
+{
+  GVariantBuilder builder;
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("(sssa{ss}ay)"));
+  g_variant_builder_add (&builder, "s", msg->addr);
+  g_variant_builder_add (&builder, "s", msg->id);
+  g_variant_builder_add (&builder, "s", msg->response_to);
+  g_variant_builder_open (&builder, G_VARIANT_TYPE( "a{ss}"));
+  ygg_metadata_foreach (msg->metadata, metadata_foreach_builder_add, &builder);
+  g_variant_builder_close (&builder);
+  g_variant_builder_add_value (&builder, g_variant_new_bytestring (g_bytes_get_data (msg->data, NULL)));
+  return g_variant_builder_end (&builder);
+}
+
+static void
+message_free (Message *message)
+{
+  g_free (message->addr);
+  g_free (message->id);
+  g_free (message->response_to);
+  g_object_unref (message->metadata);
+  g_bytes_unref (message->data);
+  g_rc_box_release (message);
 }
 
 G_DEFINE_QUARK (ygg-worker-error-quark, ygg_worker_error)
@@ -173,64 +175,24 @@ enum {
 
 static GParamSpec *properties [N_PROPS];
 
-static void
-metadata_foreach_builder_add (const gchar *key,
-                              const gchar *val,
-                              gpointer     user_data)
-{
-  GVariantBuilder *builder = (GVariantBuilder *) user_data;
-  g_variant_builder_add (builder, "{ss}", key, val);
-}
-
 /**
  * invoke_rx:
- * @user_data: (transfer none): the #ReceiveData containing parameters.
+ * @user_data: (transfer full): The received #Message.
  *
  * A #GSourceFunc that handles com.redhat.Yggdrasil1.Worker1.Dispatch
  * asynchronously.
  *
- * Returns: #G_SOURCE_REMOVE, indicating that this callback should only be
+ * Returns: %G_SOURCE_REMOVE, indicating that this callback should only be
  * invoked once.
  */
 static gboolean
 invoke_rx (gpointer user_data)
 {
   g_debug ("invoke_rx");
-  ReceiveData *args = (ReceiveData *) user_data;
-  YggWorker *self = YGG_WORKER (args->worker);
+  Message *msg = (Message *) user_data;
+  YggWorker *self = YGG_WORKER (msg->worker);
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
-  GVariant *parameters = args->parameters;
   GError *err = NULL;
-  g_assert_nonnull (parameters);
-
-  GVariantIter iter;
-  g_variant_iter_init (&iter, parameters);
-
-  gchar *addr = NULL;
-  g_variant_iter_next (&iter, "s", &addr);
-  g_debug ("addr = %s", addr);
-
-  gchar *id = NULL;
-  g_variant_iter_next (&iter, "s", &id);
-  g_debug ("id = %s", id);
-
-  gchar *response_to = NULL;
-  g_variant_iter_next (&iter, "s", &response_to);
-  g_debug ("response_to = %s", response_to);
-
-  g_autoptr (GVariant) metadata_value = NULL;
-  metadata_value = g_variant_iter_next_value (&iter);
-  g_debug ("metadata_value = %s", g_variant_print (metadata_value, TRUE));
-  g_assert_null (err);
-  YggMetadata *metadata = ygg_metadata_new_from_variant (metadata_value, &err);
-  if (err != NULL) {
-    g_critical ("failed to create metadata from variant: %s", err->message);
-    goto out;
-  }
-
-  g_autoptr (GVariant) data = NULL;
-  data = g_variant_iter_next_value (&iter);
-  g_debug("data = %s", g_variant_print (data, TRUE));
 
   g_assert_null (err);
   if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_BEGIN, "", &err)) {
@@ -241,7 +203,13 @@ invoke_rx (gpointer user_data)
   }
 
   g_assert_nonnull (priv->rx_func);
-  priv->rx_func (self, addr, id, response_to, metadata, g_variant_get_data_as_bytes (data), priv->rx_func_user_data);
+  priv->rx_func (self,
+                 g_strdup (msg->addr),
+                 g_strdup (msg->id),
+                 g_strdup (msg->response_to),
+                 g_object_ref (msg->metadata),
+                 g_bytes_ref (msg->data),
+                 priv->rx_func_user_data);
 
   g_assert_null (err);
   if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, "", &err)) {
@@ -250,8 +218,9 @@ invoke_rx (gpointer user_data)
       goto out;
     }
   }
+
 out:
-  receive_data_release (args);
+  message_free (msg);
 
   return G_SOURCE_REMOVE;
 }
@@ -290,12 +259,12 @@ dbus_proxy_call_done (GObject      *source_object,
 static gboolean
 invoke_tx (gpointer user_data)
 {
-  g_debug ("invoking invoke_tx");
+  g_debug ("invoke_tx");
   GTask *task = G_TASK (user_data);
   GError *err = NULL;
 
-  TransmitData *task_data = (TransmitData *) g_task_get_task_data (task);
-  g_return_val_if_fail (task_data != NULL, G_SOURCE_REMOVE);
+  Message *message = (Message *) g_task_get_task_data (task);
+  g_return_val_if_fail (message != NULL, G_SOURCE_REMOVE);
 
   GDBusInterfaceInfo *interface_info = g_dbus_node_info_lookup_interface (dispatcher_node_info, "com.redhat.Yggdrasil1.Dispatcher1");
   g_assert_nonnull (interface_info);
@@ -315,21 +284,12 @@ invoke_tx (gpointer user_data)
     return G_SOURCE_REMOVE;
   }
 
-  GVariantBuilder builder;
-  g_variant_builder_init (&builder, G_VARIANT_TYPE ("(sssa{ss}ay)"));
-  g_variant_builder_add (&builder, "s", task_data->addr);
-  g_variant_builder_add (&builder, "s", task_data->id);
-  g_variant_builder_add (&builder, "s", task_data->response_to);
-  g_variant_builder_open (&builder, G_VARIANT_TYPE( "a{ss}"));
-  ygg_metadata_foreach (task_data->metadata, metadata_foreach_builder_add, &builder);
-  g_variant_builder_close (&builder);
-  g_variant_builder_add_value (&builder, g_variant_new_bytestring (g_bytes_get_data (task_data->data, NULL)));
-  GVariant *transmit_args = g_variant_builder_end (&builder);
-  g_debug ("Transmit parameters: %s", g_variant_print (transmit_args, TRUE));
+  GVariant *parameters = message_to_variant (message);
+  g_debug ("Transmit parameters: %s", g_variant_print (parameters, TRUE));
 
   g_dbus_proxy_call (proxy,
                      "Transmit",
-                     transmit_args,
+                     parameters,
                      G_DBUS_CALL_FLAGS_NONE,
                      -1,
                      NULL,
@@ -354,16 +314,24 @@ handle_method_call (GDBusConnection       *connection,
   g_debug ("%s parameters: %s", method_name, g_variant_print (parameters, TRUE));
 
   if (g_strcmp0 (method_name, "Dispatch") == 0) {
-    ReceiveData *args = receive_data_new (self, g_variant_ref_sink (parameters));
+    GError *err = NULL;
 
+    Message *msg = message_new_from_variant (self, parameters, &err);
+    if (err != NULL) {
+      g_dbus_method_invocation_return_gerror (invocation, err);
+      return;
+    }
+
+    g_idle_add (invoke_rx, msg);
     g_dbus_method_invocation_return_value (invocation, NULL);
-    g_idle_add (invoke_rx, args);
+    return;
   } else {
     g_dbus_method_invocation_return_error (invocation,
                                            YGG_WORKER_ERROR,
                                            YGG_WORKER_ERROR_UNKNOWN_METHOD,
                                            "unknown method: %s",
                                            method_name);
+    return;
   }
 }
 
@@ -396,8 +364,8 @@ handle_get_property (GDBusConnection  *connection,
   if (g_strcmp0 (property_name, "Features") == 0) {
     g_assert_nonnull (priv->features);
     GVariantBuilder builder;
-    g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{sv}"));
-    ygg_metadata_foreach (priv->features, metadata_foreach_builder_add_value, &builder);
+    g_variant_builder_init (&builder, G_VARIANT_TYPE ("a{ss}"));
+    ygg_metadata_foreach (priv->features, metadata_foreach_builder_add, &builder);
     value = g_variant_builder_end (&builder);
   }
 
@@ -588,7 +556,7 @@ ygg_worker_transmit_finish (YggWorker     *self,
   GTask *task = G_TASK (res);
   GError *err = NULL;
 
-  GVariant *response = g_task_propagate_pointer (task, &err);
+  g_autoptr (GVariant) response = g_task_propagate_pointer (task, &err);
   if (err != NULL && error != NULL) {
     g_propagate_error (error, err);
     return FALSE;
@@ -616,13 +584,13 @@ ygg_worker_transmit_finish (YggWorker     *self,
 /**
  * ygg_worker_transmit:
  * @worker: A #YggWorker.
- * @addr: (transfer full): destination address of the data to be transmitted.
- * @id: (transfer full): a UUID.
- * @response_to: (transfer full) (nullable): a UUID the data is in response to
+ * @addr: (transfer none): destination address of the data to be transmitted.
+ * @id: (transfer none): a UUID.
+ * @response_to: (transfer none) (nullable): a UUID the data is in response to
  * or %NULL.
- * @metadata: (transfer full) (nullable): Key-value pairs associated with the
+ * @metadata: (transfer none) (nullable): Key-value pairs associated with the
  * data or %NULL.
- * @data: (transfer full): the data.
+ * @data: (transfer none): the data.
  * @cancellable: (nullable): a #GCancellable or %NULL.
  * @callback: (scope async): A #GAsyncReadyCallback to be invoked when the task is complete.
  * @user_data: (nullable): optional data passed into @callback.
@@ -642,9 +610,15 @@ ygg_worker_transmit (YggWorker           *self,
                      GAsyncReadyCallback  callback,
                      gpointer             user_data)
 {
+  g_debug ("ygg_worker_transmit");
   GTask *task = g_task_new (self, cancellable, callback, user_data);
-  TransmitData *transmit_data = transmit_data_new (addr, id, response_to, metadata, data);
-  g_task_set_task_data (task, transmit_data, (GDestroyNotify) transmit_data_free);
+  Message *message = message_new (self,
+                                  addr,
+                                  id,
+                                  response_to,
+                                  metadata,
+                                  data);
+  g_task_set_task_data (task, message, (GDestroyNotify) message_free);
   GSource *source = g_idle_source_new ();
   g_task_attach_source (task, source, invoke_tx);
 }
