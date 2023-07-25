@@ -5,8 +5,9 @@ interact with _yggdrasil_.
 
 ## Requirements
 
-* `pkgconfig(gio-2.0)` >= 2.56.0
 * `pkgconfig(dbus-1)` >= 1.14.0
+* `pkgconfig(gio-2.0)` >= 2.56.0
+* `pkgconfig(gobject-introspection-1.0)`
 
 ## Installation
 
