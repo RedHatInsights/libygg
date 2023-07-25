@@ -6,6 +6,7 @@ import uuid
 
 import gi
 try:
+    # Import required modules from the g-i repository
     gi.require_version('Ygg', '0.1')
     gi.require_version('GLib', '2.0')
 
@@ -15,6 +16,10 @@ except ImportError or ValueError as e:
 
 
 def transmit_done(worker, result):
+    '''
+        A callback that is invoked once when the `transmit` method call
+        finishes.
+    '''
     success, response_code, response_metadata, response_data = worker.transmit_finish(
         result)
     if success:
@@ -37,27 +42,46 @@ def handle_rx(worker, addr, id, response_to, meta_data, data):
     logging.debug("meta_data = {}".format(meta_data))
     logging.debug("data = {}".format(data.get_data()))
 
+    # Emit the worker event "WORKING". This may optionally be used to signal the
+    # dispatcher that the worker is actively working.
     worker.emit_event(Ygg.WorkerEvent.WORKING,
                       "working on data: {}".format(data))
 
+    # Call the transmit function, sending `data` back to the dispatcher.
     worker.transmit(addr, str(uuid.uuid4()), id,
                     meta_data, data, None, transmit_done)
 
 
 def handle_event(event):
+    '''
+        A callback that is invoked each time the worker receives an event signal
+        from the dispatcher.
+    '''
     print(event)
 
 
 if __name__ == "__main__":
+    # Set up argument parsing and a flag for log level
     parser = argparse.ArgumentParser()
     parser.add_argument("-l", "--log-level", help="set logging level")
     args = parser.parse_args()
+
+    # Set the log level parsed from flags
     logging.basicConfig(level=args.log_level)
+
+    # Create a worker with the directive value 'echo_py'.
     worker = Ygg.Worker(directive="echo_py",
                         remote_content=False, features=None)
+
+    # Set a data receive handler function
     worker.set_rx_func(handle_rx)
+
+    # Set an event receive handler function
     worker.set_event_func(handle_event)
+
+    # Connect the worker
     worker.connect()
 
+    # Start the main run loop
     loop = GLib.MainLoop()
     loop.run()
