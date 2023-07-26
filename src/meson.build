@@ -46,7 +46,7 @@ add_project_arguments(
   language: 'c'
 )
 
-libygg_lib = shared_library('libygg-' + api_version,
+libygg_lib = shared_library('ygg-' + api_version,
   libygg_sources,
   dependencies: libygg_deps,
        install: true,
