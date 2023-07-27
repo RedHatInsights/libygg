@@ -1,4 +1,4 @@
-api_version = '0.1'
+api_version = '0'
 
 libygg_sources = [
   'ygg-metadata.c',
@@ -25,7 +25,7 @@ configure_file(
          output: 'ygg-version.h',
   configuration: version_conf,
         install: true,
-    install_dir: join_paths(get_option('includedir'), 'libygg')
+    install_dir: join_paths(get_option('includedir'), 'libygg-' + api_version)
 )
 
 configure_file(
@@ -33,7 +33,7 @@ configure_file(
   output: '@BASENAME@',
   configuration: config_data,
   install: true,
-  install_dir: join_paths(get_option('includedir'), 'libygg')
+  install_dir: join_paths(get_option('includedir'), 'libygg-' + api_version)
 )
 
 libygg_deps = [
@@ -46,28 +46,29 @@ add_project_arguments(
   language: 'c'
 )
 
-libygg_lib = shared_library('ygg-' + api_version,
+libygg = shared_library('ygg-' + api_version,
   libygg_sources,
+       version: '@0@.0.0'.format(api_version),
   dependencies: libygg_deps,
        install: true,
 )
 
-install_headers(libygg_headers, subdir: 'libygg')
+install_headers(libygg_headers, subdir: 'libygg-' + api_version)
 
 pkg = import('pkgconfig')
 pkg.generate(
   description: 'A shared library for yggdrasil workers',
-    libraries: libygg_lib,
+    libraries: libygg,
          name: 'libygg',
      filebase: 'libygg-' + api_version,
       version: meson.project_version(),
-      subdirs: 'libygg',
+      subdirs: 'libygg-' + api_version,
      requires: ['gio-2.0'],
   install_dir: join_paths(get_option('libdir'), 'pkgconfig')
 )
 
 gnome = import('gnome')
-libygg_gir = gnome.generate_gir(libygg_lib,
+libygg_gir = gnome.generate_gir(libygg,
               sources: [libygg_headers, libygg_sources],
             nsversion: api_version,
             namespace: 'Ygg',
@@ -75,6 +76,7 @@ libygg_gir = gnome.generate_gir(libygg_lib,
     identifier_prefix: 'Ygg',
              includes: [ 'Gio-2.0' ],
               install: true,
+               header: 'ygg.h',
        fatal_warnings: get_option('werror'),
 )
 
@@ -88,7 +90,7 @@ test('test-ygg-metadata',
   executable('test-ygg-metadata',
     test_sources,
     dependencies: test_deps,
-    link_with: [libygg_lib],
+    link_with: [libygg],
   ),
   env: [
     'G_TEST_SRCDIR=@0@'.format(meson.current_source_dir()),

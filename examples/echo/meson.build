@@ -9,7 +9,7 @@ echo_deps = [
 executable('yggdrasil-worker-echo',
   dependencies: echo_deps,
   include_directories: libygg_inc,
-  link_with: [libygg_lib],
+  link_with: [libygg],
   sources: echo_sources,
   install: get_option('install_examples')
 )
