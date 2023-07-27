@@ -5,10 +5,11 @@ import logging
 import uuid
 
 import gi
+
 try:
     # Import required modules from the g-i repository
-    gi.require_version('Ygg', '0')
-    gi.require_version('GLib', '2.0')
+    gi.require_version("Ygg", "0")
+    gi.require_version("GLib", "2.0")
 
     from gi.repository import Ygg, GLib
 except ImportError or ValueError as e:
@@ -16,12 +17,13 @@ except ImportError or ValueError as e:
 
 
 def transmit_done(worker, result):
-    '''
-        A callback that is invoked once when the `transmit` method call
-        finishes.
-    '''
+    """
+    A callback that is invoked once when the `transmit` method call
+    finishes.
+    """
     success, response_code, response_metadata, response_data = worker.transmit_finish(
-        result)
+        result
+    )
     if success:
         logging.debug("response_code = {}".format(response_code))
         logging.debug("response_metadata = {}".format(response_metadata))
@@ -31,10 +33,10 @@ def transmit_done(worker, result):
 
 
 def handle_rx(worker, addr, id, response_to, meta_data, data):
-    '''
-        A callback that is invoked each time the worker receives data from the
-        dispatcher.
-    '''
+    """
+    A callback that is invoked each time the worker receives data from the
+    dispatcher.
+    """
     logging.debug("handle_rx")
     logging.debug("addr = {}".format(addr))
     logging.debug("id = {}".format(id))
@@ -44,19 +46,17 @@ def handle_rx(worker, addr, id, response_to, meta_data, data):
 
     # Emit the worker event "WORKING". This may optionally be used to signal the
     # dispatcher that the worker is actively working.
-    worker.emit_event(Ygg.WorkerEvent.WORKING,
-                      "working on data: {}".format(data))
+    worker.emit_event(Ygg.WorkerEvent.WORKING, "working on data: {}".format(data))
 
     # Call the transmit function, sending `data` back to the dispatcher.
-    worker.transmit(addr, str(uuid.uuid4()), id,
-                    meta_data, data, None, transmit_done)
+    worker.transmit(addr, str(uuid.uuid4()), id, meta_data, data, None, transmit_done)
 
 
 def handle_event(event):
-    '''
-        A callback that is invoked each time the worker receives an event signal
-        from the dispatcher.
-    '''
+    """
+    A callback that is invoked each time the worker receives an event signal
+    from the dispatcher.
+    """
     print(event)
 
 
@@ -70,8 +70,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=args.log_level)
 
     # Create a worker with the directive value 'echo_py'.
-    worker = Ygg.Worker(directive="echo_py",
-                        remote_content=False, features=None)
+    worker = Ygg.Worker(directive="echo_py", remote_content=False, features=None)
 
     # Set a data receive handler function
     worker.set_rx_func(handle_rx)
