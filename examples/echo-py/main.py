@@ -7,7 +7,7 @@ import uuid
 import gi
 try:
     # Import required modules from the g-i repository
-    gi.require_version('Ygg', '0.1')
+    gi.require_version('Ygg', '0')
     gi.require_version('GLib', '2.0')
 
     from gi.repository import Ygg, GLib
