@@ -23,6 +23,10 @@ meson compile -C builddir
 meson install -C builddir
 ```
 
+It is also possible to compile _libygg_ into an RPM suitable for installation on
+Fedora-based distributions. See the README in [dist/srpm](./dist/srpm) for
+details.
+
 ## Features
 
 * Worker Developer API
