@@ -27,7 +27,7 @@
 static void
 test_ygg_metadata_set (void)
 {
-  g_autoptr(YggMetadata) metadata = ygg_metadata_new ();
+  g_autoptr (YggMetadata) metadata = ygg_metadata_new ();
   g_assert_true (ygg_metadata_set (metadata, "ke", "ka"));
   g_assert_true (ygg_metadata_set (metadata, "he", "ha"));
   g_assert_false (ygg_metadata_set (metadata, "ke", "ki"));
@@ -36,7 +36,7 @@ test_ygg_metadata_set (void)
 static void
 test_ygg_metadata_to_variant (void)
 {
-  g_autoptr(YggMetadata) metadata = ygg_metadata_new ();
+  g_autoptr (YggMetadata) metadata = ygg_metadata_new ();
   g_assert_true (ygg_metadata_set (metadata, "ke", "ka"));
   GVariant *variant = ygg_metadata_to_variant (metadata);
   g_assert_cmpstr (g_variant_print (variant, TRUE), ==, "{'ke': 'ka'}");
@@ -88,4 +88,3 @@ main (int   argc,
 
   return g_test_run ();
 }
-
