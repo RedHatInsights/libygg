@@ -80,15 +80,24 @@ libygg_gir = gnome.generate_gir(libygg,
        fatal_warnings: get_option('werror'),
 )
 
-test_sources = [
-  'test-ygg-metadata.c'
-]
-
 test_deps = libygg_deps
 
 test('test-ygg-metadata',
   executable('test-ygg-metadata',
-    test_sources,
+    ['test-ygg-metadata.c'],
+    dependencies: test_deps,
+    link_with: [libygg],
+  ),
+  env: [
+    'G_TEST_SRCDIR=@0@'.format(meson.current_source_dir()),
+    'G_TEST_BUILDDIR=@0@'.format(meson.current_build_dir()),
+  ],
+  protocol: 'tap',
+)
+
+test('test-ygg-worker',
+  executable('test-ygg-worker',
+    ['test-ygg-worker.c'],
     dependencies: test_deps,
     link_with: [libygg],
   ),
