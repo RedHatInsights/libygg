@@ -195,7 +195,7 @@ invoke_rx (gpointer user_data)
   GError *err = NULL;
 
   g_assert_null (err);
-  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_BEGIN, "", &err)) {
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_BEGIN, msg->id, "", &err)) {
     if (err != NULL) {
       g_critical ("%s", err->message);
       goto out;
@@ -212,7 +212,7 @@ invoke_rx (gpointer user_data)
                  priv->rx_func_user_data);
 
   g_assert_null (err);
-  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, "", &err)) {
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, msg->id, "", &err)) {
     if (err != NULL) {
       g_critical ("%s", err->message);
       goto out;
@@ -627,6 +627,7 @@ ygg_worker_transmit (YggWorker           *self,
  * ygg_worker_emit_event:
  * @worker: A #YggWorker instance.
  * @event: The #YggWorkerEvent to emit.
+ * @message_id: The message ID.
  * @message: (nullable): An optional message to include with the emitted signal.
  * @error: (nullable): Return location for a recoverable error.
  *
@@ -637,6 +638,7 @@ ygg_worker_transmit (YggWorker           *self,
 gboolean ygg_worker_emit_event (YggWorker       *self,
                                 YggWorkerEvent   event,
                                 const gchar     *message,
+                                const gchar     *message_id,
                                 GError         **error)
 {
   GError *err = NULL;
@@ -656,7 +658,7 @@ gboolean ygg_worker_emit_event (YggWorker       *self,
                                         priv->object_path,
                                         "com.redhat.Yggdrasil1.Worker1",
                                         "Event",
-                                        g_variant_new ("(us)", event, message),
+                                        g_variant_new ("(uss)", event, message_id, message),
                                         error);
 }
 

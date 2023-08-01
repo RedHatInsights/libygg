@@ -154,6 +154,7 @@ gboolean ygg_worker_transmit_finish (YggWorker     *worker,
 
 gboolean ygg_worker_emit_event (YggWorker       *worker,
                                 YggWorkerEvent   event,
+                                const gchar     *message_id,
                                 const gchar     *message,
                                 GError         **error);
 
