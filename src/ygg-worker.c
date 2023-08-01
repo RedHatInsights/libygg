@@ -637,8 +637,8 @@ ygg_worker_transmit (YggWorker           *self,
  */
 gboolean ygg_worker_emit_event (YggWorker       *self,
                                 YggWorkerEvent   event,
-                                const gchar     *message,
                                 const gchar     *message_id,
+                                const gchar     *message,
                                 GError         **error)
 {
   GError *err = NULL;
