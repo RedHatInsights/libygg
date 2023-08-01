@@ -46,7 +46,7 @@ def handle_rx(worker, addr, id, response_to, meta_data, data):
 
     # Emit the worker event "WORKING". This may optionally be used to signal the
     # dispatcher that the worker is actively working.
-    worker.emit_event(Ygg.WorkerEvent.WORKING, "working on data: {}".format(data))
+    worker.emit_event(Ygg.WorkerEvent.WORKING, id, "working on data: {}".format(data))
 
     # Call the transmit function, sending `data` back to the dispatcher.
     worker.transmit(addr, str(uuid.uuid4()), id, meta_data, data, None, transmit_done)

@@ -119,7 +119,7 @@ static void handle_rx (YggWorker   *worker,
 
   GError *err = NULL;
   g_assert_null (err);
-  if (!ygg_worker_emit_event (worker, YGG_WORKER_EVENT_WORKING, g_strconcat ("working on data: ", (gchar *) g_bytes_get_data (data, NULL), NULL), &err)) {
+  if (!ygg_worker_emit_event (worker, YGG_WORKER_EVENT_WORKING, id, g_strconcat ("working on data: ", (gchar *) g_bytes_get_data (data, NULL), NULL), &err)) {
     if (err != NULL) {
       g_error ("%s", err->message);
     }
