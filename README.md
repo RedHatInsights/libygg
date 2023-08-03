@@ -90,6 +90,15 @@ if __name__ == "__main__":
 See [examples](./examples) for details on how to use the library in different
 programming languages.
 
+## Running
+
+Under normal conditions, the worker will get started by systemd or D-Bus
+service activation. When running a worker manually, make sure to set the value
+of the `DBUS_STARTER_BUS_TYPE` environment variable to "session" or "system"
+accordingly. `ygg_worker_connect` relies on the value of this variable to
+determine which bus to connect to. If this value is missing, the worker will not
+connect to a bus at all.
+
 ## Contact
 
 Chat on Matrix: [#yggd:matrix.org](https://matrix.to/#/#yggd:matrix.org).
