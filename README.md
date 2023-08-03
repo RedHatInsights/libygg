@@ -69,7 +69,7 @@ gint main (gint argc, gchar *argv[])
 }
 ```
 
-### Indirectly
+#### Indirectly
 
 Additionally, the API can be used through gobject-introspection, as in the
 Python example below.
