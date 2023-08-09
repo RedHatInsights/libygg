@@ -64,13 +64,16 @@ if __name__ == "__main__":
     # Set up argument parsing and a flag for log level
     parser = argparse.ArgumentParser()
     parser.add_argument("-l", "--log-level", help="set logging level")
+    parser.add_argument(
+        "-d", "--directive", help="connect using directive", default="echo"
+    )
     args = parser.parse_args()
 
     # Set the log level parsed from flags
     logging.basicConfig(level=args.log_level)
 
     # Create a worker with the directive value 'echo_py'.
-    worker = Ygg.Worker(directive="echo_py", remote_content=False, features=None)
+    worker = Ygg.Worker(directive=args.directive, remote_content=False, features=None)
 
     # Set a data receive handler function
     worker.set_rx_func(handle_rx)
