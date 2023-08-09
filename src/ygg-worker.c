@@ -507,10 +507,10 @@ ygg_worker_connect (YggWorker *self, GError **error)
 
   if (g_regex_match_simple ("-", priv->directive, 0, 0)) {
     if (error != NULL) {
-      g_error_new (YGG_WORKER_ERROR,
-                   YGG_WORKER_ERROR_INVALID_DIRECTIVE,
-                   "%s is not a valid directive",
-                   priv->directive);
+      *error = g_error_new (YGG_WORKER_ERROR,
+                            YGG_WORKER_ERROR_INVALID_DIRECTIVE,
+                            "%s is not a valid directive",
+                            priv->directive);
     }
     return FALSE;
   }
@@ -682,8 +682,12 @@ ygg_worker_get_feature (YggWorker    *self,
   const gchar *value = ygg_metadata_get (priv->features, key);
   if (value == NULL) {
       if (error != NULL) {
-        g_error_new (YGG_WORKER_ERROR, YGG_WORKER_ERROR_MISSING_FEATURE, "no value for key '%s'", key);
+        *error = g_error_new (YGG_WORKER_ERROR,
+                              YGG_WORKER_ERROR_MISSING_FEATURE,
+                              "no value for key '%s'",
+                              key);
       }
+      return NULL;
   }
 
   return value;
