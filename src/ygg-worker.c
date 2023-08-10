@@ -409,7 +409,8 @@ handle_signal (GDBusConnection *connection,
   YggDispatcherEvent event;
   g_variant_get (parameters, "(u)", &event);
 
-  priv->event_func (event, priv->event_func_user_data);
+  if (priv->event_func)
+    priv->event_func (event, priv->event_func_user_data);
 }
 
 
