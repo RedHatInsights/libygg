@@ -67,6 +67,12 @@ pkg.generate(
   install_dir: join_paths(get_option('libdir'), 'pkgconfig')
 )
 
+introspection_files = files(
+  dbus.get_variable('interfaces_dir') / 'com.redhat.Yggdrasil1.Worker1.xml',
+  dbus.get_variable('interfaces_dir') / 'com.redhat.Yggdrasil1.Dispatcher1.xml',
+)
+yggdrasil = declare_dependency(sources: introspection_files)
+
 gnome = import('gnome')
 libygg_gir = gnome.generate_gir(libygg,
               sources: [libygg_headers, libygg_sources],
@@ -78,6 +84,7 @@ libygg_gir = gnome.generate_gir(libygg,
               install: true,
                header: 'ygg.h',
        fatal_warnings: get_option('werror'),
+         dependencies: yggdrasil,
 )
 
 test_deps = libygg_deps
