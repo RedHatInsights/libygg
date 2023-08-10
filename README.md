@@ -76,7 +76,9 @@ Python example below.
 
 ```python
 def handle_rx(worker, addr, id, response_to, meta_data, data):
-    logging.debug(data)
+    # data is an instance of GLib.Bytes (GBytes), so the raw bytes array must be
+    # accessed via the GLib API (g_bytes_*).
+    logging.debug(data.get_bytes())
 
 if __name__ == "__main__":
     worker = Ygg.Worker(directive="echo", remote_content=False, features=None)
