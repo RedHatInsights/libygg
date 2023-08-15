@@ -77,6 +77,3 @@ Requires:       %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
 %{_includedir}/%{name}*/*.h
 %{_libdir}/%{name}*.so
 %{_libdir}/pkgconfig/*.pc
-
-%changelog
-%autochangelog
