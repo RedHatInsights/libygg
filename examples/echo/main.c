@@ -42,8 +42,8 @@ transmit_done (GObject      *source_object,
 {
   YggWorker *worker = YGG_WORKER (source_object);
   gint response_code = G_MININT;
-  YggMetadata *response_metadata = NULL;
-  GBytes *response_data = NULL;
+  g_autoptr (YggMetadata) response_metadata = NULL;
+  g_autoptr (GBytes) response_data = NULL;
   GError *err = NULL;
 
   g_debug ("transmit_done");
@@ -68,9 +68,10 @@ transmit_done (GObject      *source_object,
     g_print ("response_data = %s", (gchar *) g_bytes_get_data (response_data, NULL));
   }
 
-  GDateTime *now = g_date_time_new_now_utc ();
+  g_autoptr (GDateTime) now = g_date_time_new_now_utc ();
+  g_autofree gchar *datetimestamp = g_date_time_format_iso8601 (now);
   g_assert_null (err);
-  if (!ygg_worker_set_feature (worker, "UpdatedAt", g_date_time_format_iso8601 (now), &err)) {
+  if (!ygg_worker_set_feature (worker, "UpdatedAt", datetimestamp, &err)) {
     if (err != NULL) {
       g_critical ("failed to set feature: %s", err->message);
       return;
@@ -119,15 +120,16 @@ static void handle_rx (YggWorker   *worker,
 
   GError *err = NULL;
   g_assert_null (err);
-  if (!ygg_worker_emit_event (worker, YGG_WORKER_EVENT_WORKING, id, g_strconcat ("working on data: ", (gchar *) g_bytes_get_data (data, NULL), NULL), &err)) {
+  g_autofree gchar *event_message = g_strconcat ("working on data: ", (gchar *) g_bytes_get_data (data, NULL), NULL);
+  if (!ygg_worker_emit_event (worker, YGG_WORKER_EVENT_WORKING, id, event_message, &err)) {
     if (err != NULL) {
       g_error ("%s", err->message);
     }
   }
-
+  g_autofree gchar *new_message_uuid = g_uuid_string_random ();
   ygg_worker_transmit (worker,
                        addr,
-                       g_uuid_string_random (),
+                       new_message_uuid,
                        id,
                        metadata,
                        data,

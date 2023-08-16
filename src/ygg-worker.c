@@ -36,12 +36,12 @@ typedef struct {
 /**
  * message_new:
  * @worker: (transfer none): A #YggWorker.
- * @addr: (transfer full): Address of the message.
- * @id: (transfer full): ID of the message.
- * @response_to: (transfer full) (nullable): ID of a message to respond to.
- * @metadata: (transfer full) (nullable): Key/value pairs to associate with the
+ * @addr: (transfer none): Address of the message.
+ * @id: (transfer none): ID of the message.
+ * @response_to: (transfer none) (nullable): ID of a message to respond to.
+ * @metadata: (transfer none) (nullable): Key/value pairs to associate with the
  * message.
- * @data: (transfer full): The data of the message.
+ * @data: (transfer none): The data of the message.
  *
  * Creates a new #Message.
  *
@@ -57,7 +57,7 @@ message_new (YggWorker   *worker,
 {
   Message *message = g_rc_box_new0 (Message);
 
-  message->worker = worker;
+  message->worker = g_object_ref (worker);
   message->addr = g_strdup (addr);
   message->id = g_strdup (id);
   message->response_to = g_strdup (response_to);
@@ -85,7 +85,7 @@ message_new_from_variant (YggWorker  *worker,
   g_autofree gchar *response_to = NULL;
   g_variant_iter_next (&iter, "s", &response_to);
 
-  YggMetadata *metadata = ygg_metadata_new_from_variant (g_variant_iter_next_value (&iter), &err);
+  g_autoptr (YggMetadata) metadata = ygg_metadata_new_from_variant (g_variant_iter_next_value (&iter), &err);
   if (err != NULL && error != NULL) {
     g_critical ("failed to create metadata from variant: %s", err->message);
     g_propagate_error (error, err);
@@ -285,7 +285,8 @@ invoke_tx (gpointer user_data)
   }
 
   GVariant *parameters = message_to_variant (message);
-  g_debug ("Transmit parameters: %s", g_variant_print (parameters, TRUE));
+  g_autofree gchar *printed_params = g_variant_print (parameters, TRUE);
+  g_debug ("Transmit parameters: %s", printed_params);
 
   g_dbus_proxy_call (proxy,
                      "Transmit",
@@ -311,7 +312,8 @@ handle_method_call (GDBusConnection       *connection,
 {
   YggWorker *self = YGG_WORKER (user_data);
 
-  g_debug ("%s parameters: %s", method_name, g_variant_print (parameters, TRUE));
+  g_autofree gchar *print_params = g_variant_print (parameters, TRUE);
+  g_debug ("%s parameters: %s", method_name, print_params);
 
   if (g_strcmp0 (method_name, "Dispatch") == 0) {
     GError *err = NULL;
@@ -469,7 +471,7 @@ on_name_lost (GDBusConnection *connection,
  * ygg_worker_new: (constructor)
  * @directive: (transfer none): The worker directive name.
  * @remote_content: The worker requires content from a remote URL.
- * @features: (transfer full) (nullable): An initial table of values to use as
+ * @features: (transfer none) (nullable): An initial table of values to use as
  * the worker's features map.
  *
  * Creates a new #YggWorker instance.
@@ -562,7 +564,10 @@ ygg_worker_transmit_finish (YggWorker     *self,
     g_propagate_error (error, err);
     return FALSE;
   }
-  g_debug ("%s", g_variant_print (response, TRUE));
+  g_object_unref (task);
+
+  g_autofree gchar *printed_variant = g_variant_print (response, TRUE);
+  g_debug ("%s", printed_variant);
 
   GVariantIter iter;
   g_variant_iter_init (&iter, response);

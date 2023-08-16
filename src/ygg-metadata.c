@@ -49,6 +49,15 @@ ygg_metadata_new (void)
 }
 
 
+/**
+ * ygg_metadata_new_from_variant: (constructor)
+ * @variant: (transfer none): A #GVariant of type "a{ss}".
+ * @error: (nullable): Return location for a #GError.
+ *
+ * Creates a new #YggMetadata instance by reading values from @variant.
+ *
+ * Returns: (transfer full): A new #YggMetadata instance.
+ */
 YggMetadata *
 ygg_metadata_new_from_variant (GVariant  *variant,
                                GError   **error)
