@@ -38,8 +38,9 @@ test_ygg_metadata_to_variant (void)
 {
   g_autoptr (YggMetadata) metadata = ygg_metadata_new ();
   g_assert_true (ygg_metadata_set (metadata, "ke", "ka"));
-  GVariant *variant = ygg_metadata_to_variant (metadata);
-  g_assert_cmpstr (g_variant_print (variant, TRUE), ==, "{'ke': 'ka'}");
+  g_autoptr(GVariant) variant = ygg_metadata_to_variant (metadata);
+  g_autofree gchar *pretty_printed_variant = g_variant_print (variant, TRUE);
+  g_assert_cmpstr (pretty_printed_variant, ==, "{'ke': 'ka'}");
   g_assert_true (g_variant_check_format_string (variant, "a{ss}", FALSE));
 }
 
@@ -47,7 +48,7 @@ static void
 test_ygg_metadata_new_from_variant (void)
 {
   GError *err = NULL;
-  GVariant *variant = g_variant_new_parsed ("{'ke': 'ka'}");
+  g_autoptr (GVariant) variant = g_variant_new_parsed ("{'ke': 'ka'}");
   g_autoptr (YggMetadata) metadata = ygg_metadata_new_from_variant (variant, &err);
   g_assert_null (err);
   g_assert_cmpstr (ygg_metadata_get (metadata, "ke"), ==, "ka");
@@ -66,10 +67,10 @@ static void
 test_ygg_metadata_foreach (void)
 {
   GError *err = NULL;
-  GVariant *variant = g_variant_new_parsed ("{'key': 'val', 'a': 'b'}");
+  g_autoptr (GVariant) variant = g_variant_new_parsed ("{'key': 'val', 'a': 'b'}");
   g_autoptr (YggMetadata) metadata = ygg_metadata_new_from_variant (variant, &err);
   g_assert_null (err);
-  GString *output = g_string_new (NULL);
+  g_autoptr (GString) output = g_string_new (NULL);
   ygg_metadata_foreach (metadata, _foreach, output);
   g_assert_cmpstr (output->str, ==, "'key' = 'val'\n'a' = 'b'\n");
 }
