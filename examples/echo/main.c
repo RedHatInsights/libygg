@@ -20,6 +20,7 @@
  */
 
 #include <glib.h>
+#include <glib-unix.h>
 #include "ygg.h"
 
 static void
@@ -143,16 +144,35 @@ static void handle_rx (YggWorker   *worker,
   g_bytes_unref (data);
 }
 
+static gboolean
+sigint_callback (gpointer main_loop) {
+  // Hint: this is good place to perform any resource clean up
+  // before the application terminates.
+  g_debug ("handling signal SIGINT");
+  // Stops main loop
+  g_main_loop_quit (main_loop);
+  return G_SOURCE_REMOVE;
+}
+
 gint
 main (gint   argc,
       gchar *argv[])
 {
   g_set_prgname ("yggdrasil-worker-echo");
 
+  // Create main context for main loop
+  GMainContext *main_context = g_main_context_default ();
+  g_autoptr (GMainLoop) loop = g_main_loop_new (main_context, FALSE);
+
+  // Attach signal sources to the main_context
+  g_autoptr (GSource) sigint_source = g_unix_signal_source_new (SIGINT);
+  g_source_attach (sigint_source, main_context);
+  g_source_set_callback (sigint_source, G_SOURCE_FUNC (sigint_callback), loop, NULL);
+
   YggMetadata *features = ygg_metadata_new ();
   ygg_metadata_set (features, "version", "1");
 
-  YggWorker *worker = ygg_worker_new ("echo", FALSE, features);
+  g_autoptr (YggWorker) worker = ygg_worker_new ("echo", FALSE, features);
   if (!ygg_worker_set_rx_func (worker, handle_rx, NULL, NULL)) {
     g_error ("failed to set rx_func");
   }
@@ -166,8 +186,13 @@ main (gint   argc,
     exit (1);
   }
 
-  GMainLoop *loop = g_main_loop_new (NULL, FALSE);
+  g_debug ("starting main loop of echo worker");
   g_main_loop_run (loop);
+
+  g_debug ("terminating echo worker");
+  // Note: No need to call g_source_remove() for sigint_source, because callback function
+  // sigint_callback returned G_SOURCE_REMOVE and the source was automatically removed
+  g_source_destroy (sigint_source);
 
   return 0;
 }
