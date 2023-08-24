@@ -38,7 +38,7 @@ test_ygg_metadata_to_variant (void)
 {
   g_autoptr (YggMetadata) metadata = ygg_metadata_new ();
   g_assert_true (ygg_metadata_set (metadata, "ke", "ka"));
-  g_autoptr(GVariant) variant = ygg_metadata_to_variant (metadata);
+  g_autoptr (GVariant) variant = ygg_metadata_to_variant (metadata);
   g_autofree gchar *pretty_printed_variant = g_variant_print (variant, TRUE);
   g_assert_cmpstr (pretty_printed_variant, ==, "{'ke': 'ka'}");
   g_assert_true (g_variant_check_format_string (variant, "a{ss}", FALSE));
