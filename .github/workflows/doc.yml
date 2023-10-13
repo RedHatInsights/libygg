@@ -44,6 +44,6 @@ jobs:
       - run: gi-docgen generate --output-dir $GITHUB_WORKSPACE/doc $GITHUB_WORKSPACE/builddir/src/Ygg-0.gir
       - uses: actions/upload-pages-artifact@v2
         with:
-          path: $GITHUB_WORKSPACE/doc
+          path: "$GITHUB_WORKSPACE/doc"
       - id: deployment
         uses: actions/deploy-pages@v2
