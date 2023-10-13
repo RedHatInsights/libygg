@@ -41,7 +41,7 @@ jobs:
       - run: meson setup $GITHUB_WORKSPACE/builddir
       - run: meson compile -C $GITHUB_WORKSPACE/builddir
       - run: meson test -C $GITHUB_WORKSPACE/builddir --verbose
-      - run: gi-docgen generate --output-dir _site $GITHUB_WORKSPACE/builddir/src/Ygg-0.gir
+      - run: gi-docgen generate --output-dir _site --no-namespace-dir $GITHUB_WORKSPACE/builddir/src/Ygg-0.gir
       - uses: actions/upload-pages-artifact@v2
       - id: deployment
         uses: actions/deploy-pages@v2
