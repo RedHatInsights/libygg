@@ -1,0 +1,49 @@
+name: Doc
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+env:
+  PACKAGES: |
+    /usr/bin/dbus-daemon
+    gcc
+    gi-docgen
+    git
+    meson
+    pkgconfig(dbus-1)
+    pkgconfig(gio-2.0)
+    pkgconfig(gobject-introspection-1.0)
+    yggdrasil
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{steps.deployment.outputs.page_url}}
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:latest
+    steps:
+      - run: dnf install --assumeyes $PACKAGES
+      - uses: actions/checkout@v3
+      - uses: actions/configure-pages@v3
+      - run: git config --system --add safe.directory $GITHUB_WORKSPACE
+      - run: meson setup $GITHUB_WORKSPACE/builddir
+      - run: meson compile -C $GITHUB_WORKSPACE/builddir
+      - run: meson test -C $GITHUB_WORKSPACE/builddir --verbose
+      - run: gi-docgen generate --output-dir $GITHUB_WORKSPACE/doc $GITHUB_WORKSPACE/src/Ygg-0.gir
+      - uses: actions/upload-pages-artifact@v2
+        with:
+          path: $GITHUB_WORKSPACE/doc
+      - id: deployment
+        uses: actions/deploy-pages@v2
