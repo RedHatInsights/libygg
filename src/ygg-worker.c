@@ -195,7 +195,7 @@ invoke_rx (gpointer user_data)
   GError *err = NULL;
 
   g_assert_null (err);
-  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_BEGIN, msg->id, "", &err)) {
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_BEGIN, msg->id, msg->response_to, NULL, &err)) {
     if (err != NULL) {
       g_critical ("%s", err->message);
       goto out;
@@ -212,7 +212,7 @@ invoke_rx (gpointer user_data)
                  priv->rx_func_user_data);
 
   g_assert_null (err);
-  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, msg->id, "", &err)) {
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, msg->id, msg->response_to, NULL, &err)) {
     if (err != NULL) {
       g_critical ("%s", err->message);
       goto out;
@@ -634,7 +634,8 @@ ygg_worker_transmit (YggWorker           *self,
  * @worker: A #YggWorker instance.
  * @event: The #YggWorkerEvent to emit.
  * @message_id: The message ID.
- * @message: (nullable): An optional message to include with the emitted signal.
+ * @response_to: (nullable): ID of the message this message is in response to.
+ * @data: (nullable): Key-value pairs of optional data provided with the event.
  * @error: (nullable): Return location for a recoverable error.
  *
  * Emits a com.redhat.Yggdrasil1.Worker1.Event signal.
@@ -644,10 +645,13 @@ ygg_worker_transmit (YggWorker           *self,
 gboolean ygg_worker_emit_event (YggWorker       *self,
                                 YggWorkerEvent   event,
                                 const gchar     *message_id,
-                                const gchar     *message,
+                                const gchar     *response_to,
+                                YggMetadata     *data,
                                 GError         **error)
 {
   GError *err = NULL;
+
+  g_debug ("ygg_worker_emit_event");
 
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
 
@@ -659,12 +663,27 @@ gboolean ygg_worker_emit_event (YggWorker       *self,
     return FALSE;
   }
 
+  GVariantBuilder builder;
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("(ussa{ss})"));
+  g_variant_builder_add (&builder, "u", event);
+  g_variant_builder_add (&builder, "s", message_id);
+  if (response_to != NULL) {
+    g_variant_builder_add (&builder, "s", response_to);
+  } else {
+    g_variant_builder_add (&builder, "s", "");
+  }
+  g_variant_builder_open (&builder, G_VARIANT_TYPE ("a{ss}"));
+  if (data != NULL) {
+    ygg_metadata_foreach (data, metadata_foreach_builder_add, &builder);
+  }
+  g_variant_builder_close (&builder);
+
   return g_dbus_connection_emit_signal (connection,
                                         NULL,
                                         priv->object_path,
                                         "com.redhat.Yggdrasil1.Worker1",
                                         "Event",
-                                        g_variant_new ("(uss)", event, message_id, message),
+                                        g_variant_builder_end (&builder),
                                         error);
 }
 
