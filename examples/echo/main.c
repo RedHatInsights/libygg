@@ -131,8 +131,9 @@ static void handle_rx (YggWorker   *worker,
 
   GError *err = NULL;
   g_assert_null (err);
-  g_autofree gchar *event_message = g_strconcat ("working on data: ", (gchar *) g_bytes_get_data (data, NULL), NULL);
-  if (!ygg_worker_emit_event (worker, YGG_WORKER_EVENT_WORKING, id, event_message, &err)) {
+  g_autoptr (YggMetadata) event_data = ygg_metadata_new ();
+  ygg_metadata_set (event_data, "message", (gchar *) g_bytes_get_data (data, NULL));
+  if (!ygg_worker_emit_event (worker, YGG_WORKER_EVENT_WORKING, id, response_to, event_data, &err)) {
     if (err != NULL) {
       g_error ("%s", err->message);
     }
