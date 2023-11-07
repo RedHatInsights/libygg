@@ -33,6 +33,62 @@ g_date_time_format_iso8601 (GDateTime *datetime)
 }
 #endif
 
+/** sleep_delay:
+ *
+ * The number of seconds the handler will sleep before execution.
+ */
+static gint sleep_delay = 0;
+
+/** loop_times:
+ *
+ * The number of times the response handler is invoked.
+ */
+static gint loop_times = 1;
+
+/** loops:
+ *
+ * The number of times the response handler **has been** invoked.
+ */
+static gint loops = 1;
+
+typedef struct _RxData
+{
+  YggWorker   *worker;
+  gchar       *addr;
+  gchar       *id;
+  gchar       *response_to;
+  YggMetadata *metadata;
+  GBytes      *data;
+} _RxData;
+
+static _RxData *
+_rx_data_new (YggWorker *worker, gchar *addr, gchar *id, gchar *response_to, YggMetadata *metadata, GBytes *data)
+{
+  _RxData *rx_data = g_malloc0 (sizeof (_RxData));
+
+  rx_data->worker = g_object_ref (worker);
+  rx_data->addr = g_strdup (addr);
+  rx_data->id = g_strdup (id);
+  rx_data->response_to = g_strdup (response_to);
+  rx_data->metadata = g_object_ref (metadata);
+  rx_data->data = g_bytes_ref (data);
+
+  return rx_data;
+}
+
+static void
+_rx_data_free (_RxData *data)
+{
+  g_bytes_unref (data->data);
+  g_object_unref (data->metadata);
+  g_free (data->response_to);
+  g_free (data->id);
+  g_free (data->addr);
+  g_object_unref (data->worker);
+
+  g_free (data);
+}
+
 static void
 foreach (const gchar *key,
               const gchar *value,
@@ -109,6 +165,33 @@ static void handle_event (YggDispatcherEvent event,
   }
 }
 
+static gboolean
+tx_cb (gpointer user_data)
+{
+  _RxData *d = (_RxData *) user_data;
+
+  g_debug ("loop iteration %d of %d", loops, loop_times);
+
+  g_autofree gchar *new_message_uuid = g_uuid_string_random ();
+  ygg_worker_transmit (d->worker,
+                       d->addr,
+                       new_message_uuid,
+                       d->id,
+                       d->metadata,
+                       d->data,
+                       NULL,
+                       (GAsyncReadyCallback) transmit_done,
+                       NULL);
+
+  if (loops < loop_times) {
+    g_atomic_int_inc (&loops);
+    return G_SOURCE_CONTINUE;
+  } else {
+    g_atomic_int_set (&loops, 1);
+    return G_SOURCE_REMOVE;
+  }
+}
+
 /**
  * A #YggRxFunc callback that is invoked each time the worker receives data
  * from the dispatcher.
@@ -129,6 +212,7 @@ static void handle_rx (YggWorker   *worker,
   g_debug ("data = %s", (guint8 *) g_bytes_get_data (data, NULL));
 
 
+  // Emit the "WORKING" event.
   GError *err = NULL;
   g_assert_null (err);
   g_autoptr (YggMetadata) event_data = ygg_metadata_new ();
@@ -138,16 +222,17 @@ static void handle_rx (YggWorker   *worker,
       g_error ("%s", err->message);
     }
   }
-  g_autofree gchar *new_message_uuid = g_uuid_string_random ();
-  ygg_worker_transmit (worker,
-                       addr,
-                       new_message_uuid,
-                       id,
-                       metadata,
-                       data,
-                       NULL,
-                       (GAsyncReadyCallback) transmit_done,
-                       NULL);
+
+  // Pack the message data into a container and add the actual call to
+  // ygg_worker_transmit to a GSourceFunc, to be called by an idle timer after
+  // a delay of 'sleep_delay' seconds.
+  _RxData *rxdata = _rx_data_new (worker, addr, id, response_to, metadata, data);
+  g_timeout_add_seconds_full (G_PRIORITY_DEFAULT,
+                              sleep_delay,
+                              G_SOURCE_FUNC (tx_cb),
+                              rxdata,
+                              (GDestroyNotify) _rx_data_free);
+
   g_free (addr);
   g_free (id);
   g_free (response_to);
@@ -169,7 +254,39 @@ gint
 main (gint   argc,
       gchar *argv[])
 {
-  g_set_prgname ("yggdrasil-worker-echo");
+  GError *error = NULL;
+
+  GOptionEntry option_entries[] = {
+    {
+      "sleep",
+      's',
+      G_OPTION_FLAG_NONE,
+      G_OPTION_ARG_INT,
+      &sleep_delay,
+      "Sleep time in seconds before echoing the response",
+      "SECONDS"
+    },
+    {
+      "loop",
+      'l',
+      G_OPTION_FLAG_NONE,
+      G_OPTION_ARG_INT,
+      &loop_times,
+      "Number of times to repeat the echo",
+      "TIMES"
+    },
+    { NULL, 0, 0, 0, NULL, NULL, NULL }
+  };
+
+  // Create option context and add entries.
+  g_autoptr (GOptionContext) opt_ctx = g_option_context_new ("");
+  g_option_context_add_main_entries (opt_ctx, option_entries, NULL);
+
+  g_assert_null (error);
+  if (!g_option_context_parse (opt_ctx, &argc, &argv, &error)) {
+    g_error ("failed to parse options: %s", error->message);
+    exit (1);
+  }
 
   // Create main context for main loop
   GMainContext *main_context = g_main_context_default ();
@@ -191,7 +308,7 @@ main (gint   argc,
     g_error ("failed to set event_func");
   }
 
-  GError *error = NULL;
+  g_assert_null (error);
   if (!ygg_worker_connect (worker, &error)) {
     g_error ("%s", error->message);
     exit (1);
