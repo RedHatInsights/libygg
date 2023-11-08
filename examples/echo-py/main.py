@@ -11,9 +11,16 @@ try:
     gi.require_version("Ygg", "0")
     gi.require_version("GLib", "2.0")
 
-    from gi.repository import Ygg, GLib
+    from gi.repository import GLib, Ygg
 except ImportError or ValueError as e:
     logging.error("cannot import {}".format(e))
+
+# Number of seconds to sleep before echoing a response.
+sleep_delay = 0
+
+# Number of iterations to repeat when echoing a response.
+loop_times = 1
+
 
 
 def transmit_done(worker, result):
@@ -32,6 +39,27 @@ def transmit_done(worker, result):
         worker.set_feature("UpdatedAt", datetime.datetime.now().isoformat())
 
 
+def tx_cb(data):
+    global loops
+    logging.debug("loop iteration {} of {}".format(data["loops"], loop_times))
+    worker.transmit(
+        data["addr"],
+        str(uuid.uuid4()),
+        data["id"],
+        data["metadata"],
+        data["data"],
+        None,
+        transmit_done,
+    )
+    if loops < loop_times:
+        loops += 1
+    if data["loops"] < loop_times:
+        data["loops"] += 1
+        return GLib.SOURCE_CONTINUE
+    else:
+        return GLib.SOURCE_REMOVE
+
+
 def handle_rx(worker, addr, id, response_to, meta_data, data):
     """
     A callback that is invoked each time the worker receives data from the
@@ -45,14 +73,21 @@ def handle_rx(worker, addr, id, response_to, meta_data, data):
     logging.debug("data = {}".format(data.get_data()))
 
     event_data = Ygg.Metadata()
-    event_data.set("message", data.get_data().decode(encoding='UTF-8'))
+    event_data.set("message", data.get_data().decode(encoding="UTF-8"))
 
     # Emit the worker event "WORKING". This may optionally be used to signal the
     # dispatcher that the worker is actively working.
     worker.emit_event(Ygg.WorkerEvent.WORKING, id, response_to, event_data)
 
-    # Call the transmit function, sending `data` back to the dispatcher.
-    worker.transmit(addr, str(uuid.uuid4()), id, meta_data, data, None, transmit_done)
+    tx_data = {
+        "addr": addr,
+        "id": id,
+        "response_to": response_to,
+        "metadata": meta_data,
+        "data": data,
+        "loops": 1,
+    }
+    GLib.timeout_add_seconds(sleep_delay, tx_cb, tx_data)
 
 
 def handle_event(event):
@@ -70,7 +105,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "-d", "--directive", help="connect using directive", default="echo_py"
     )
+    parser.add_argument(
+        "-L", "--loop", help="Number of times to repeat the echo", default=1, type=int
+    )
+    parser.add_argument(
+        "-s",
+        "--sleep",
+        help="Sleep time in seconds before echoing the response",
+        default=0,
+        type=int,
+    )
     args = parser.parse_args()
+
+    # Set loop_times value parsed from flags
+    loop_times = args.loop
+
+    # Set sleep_delay value parsed from flags
+    sleep_delay = args.sleep
 
     # Set the log level parsed from flags
     logging.basicConfig(level=args.log_level)
