@@ -138,6 +138,69 @@ message_free (Message *message)
   g_free (message);
 }
 
+typedef struct {
+  YggWorker *worker;
+  gchar     *addr;
+  gchar     *id;
+  gchar     *cancel_id;
+} CancelMessage;
+
+/**
+ * cancel_message_new:
+ * @worker: (transfer none): A #YggWorker;
+ * @addr: (transfer none): Address of the message.
+ * @id: (transfer none): ID of the message.
+ * @cancel_id: (transfer none): ID of the message to cancel.
+ * 
+ * Creates a new #CancelMessage.
+ * 
+ * Returns: (transfer full): A newly created #CancelMessage.
+*/
+static CancelMessage *
+cancel_message_new (YggWorker *worker,
+                    gchar     *addr,
+                    gchar     *id,
+                    gchar     *cancel_id)
+{
+  CancelMessage *message = (CancelMessage *) g_new0 (CancelMessage, 1);
+
+  message->worker = g_object_ref (worker);
+  message->addr = g_strdup (addr);
+  message->id = g_strdup (id);
+  message->cancel_id = g_strdup (cancel_id);
+
+  return message;
+}
+
+static CancelMessage *
+cancel_message_new_from_variant (YggWorker  *worker,
+                                 GVariant   *parameters)
+{
+  GVariantIter iter;
+  g_variant_iter_init (&iter, parameters);
+
+  g_autofree gchar *addr = NULL;
+  g_variant_iter_next (&iter, "s", &addr);
+
+  g_autofree gchar *id = NULL;
+  g_variant_iter_next (&iter, "s", &id);
+
+  g_autofree gchar *cancel_id = NULL;
+  g_variant_iter_next (&iter, "s", &cancel_id);
+
+  CancelMessage *msg = cancel_message_new (worker, addr, id, cancel_id);
+  return msg;
+}
+
+static void
+cancel_message_free (CancelMessage *message)
+{
+  g_free (message->addr);
+  g_free (message->id);
+  g_free (message->cancel_id);
+  g_free (message);
+}
+
 G_DEFINE_QUARK (ygg-worker-error-quark, ygg_worker_error)
 
 static GDBusNodeInfo *dispatcher_node_info;
@@ -159,6 +222,9 @@ typedef struct
   YggEventFunc   event_func;
   gpointer       event_func_user_data;
   GDestroyNotify event_func_data_notify;
+  YggCancelFunc  cancel_func;
+  gpointer       cancel_func_user_data;
+  GDestroyNotify cancel_func_data_notify;
   guint          bus_id;
   gchar         *bus_name;
   gchar         *object_path;
@@ -221,6 +287,54 @@ invoke_rx (gpointer user_data)
 
 out:
   message_free (msg);
+
+  return G_SOURCE_REMOVE;
+}
+
+/**
+ * invoke_cancel:
+ * @user_data: (transfer full): The received #CancelMessage.
+ * 
+ * A #GSourceFunc that handles com.redhat.Yggdrasil1.Worker1.Cancel
+ * asynchronously.
+ * 
+ * Returns %G_SOURCE_REMOVE, indicating that this callback should only be
+ * invoked once.
+*/
+static gboolean
+invoke_cancel (gpointer user_data)
+{
+  g_debug ("invoke_cancel");
+  CancelMessage *msg = (CancelMessage *) user_data;
+  YggWorker *self = YGG_WORKER (msg->worker);
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+  GError *err = NULL;
+
+  g_assert_null (err);
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_BEGIN, msg->id, NULL, NULL, &err)) {
+    if (err != NULL) {
+      g_critical ("%s", err->message);
+      goto out;
+    }
+  }
+
+  g_assert_nonnull (priv->cancel_func);
+  priv->cancel_func (self,
+                      msg->addr,
+                      msg->id,
+                      msg->cancel_id,
+                      priv->cancel_func_user_data);
+
+  g_assert_null (err);
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, msg->id, NULL, NULL, &err)) {
+    if (err != NULL) {
+      g_critical ("%s", err->message);
+      goto out;
+    }
+  }
+
+out:
+  cancel_message_free (msg);
 
   return G_SOURCE_REMOVE;
 }
@@ -312,6 +426,8 @@ handle_method_call (GDBusConnection       *connection,
 {
   YggWorker *self = YGG_WORKER (user_data);
 
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+
   g_autofree gchar *print_params = g_variant_print (parameters, TRUE);
   g_debug ("%s parameters: %s", method_name, print_params);
 
@@ -325,6 +441,19 @@ handle_method_call (GDBusConnection       *connection,
     }
 
     g_idle_add (invoke_rx, msg);
+    g_dbus_method_invocation_return_value (invocation, NULL);
+    return;
+  } else if (g_strcmp0 (method_name, "Cancel") == 0) {
+    if (priv->cancel_func == NULL) {
+      g_dbus_method_invocation_return_dbus_error (invocation,
+                                                  "org.freedesktop.DBus.UnknownInterface",
+                                                  "Cancel method not implemented");
+      return;
+    }
+
+    CancelMessage *msg = cancel_message_new_from_variant (self, parameters);
+
+    g_idle_add (invoke_cancel, msg);
     g_dbus_method_invocation_return_value (invocation, NULL);
     return;
   } else {
@@ -827,6 +956,38 @@ ygg_worker_set_event_func (YggWorker      *self,
   return TRUE;
 }
 
+/**
+ * ygg_worker_set_cancel_func:
+ * @worker: A #YggWorker instance.
+ * @func: (scope notified) (closure user_data): A #YggCancelFunc callback.
+ * @user_data: User data passed to @func when it is invoked.
+ * @notify (nullable): A #GDestroyNotify that is called when the reference to
+ * @func is dropped.
+ * 
+ * Stores a pointer to a handler function that is invoked when a message
+ * cancellation request is received by the worker.
+ * 
+ * Returns: %TRUE if setting the function handler succeeded.
+*/
+gboolean
+ygg_worker_set_cancel_func (YggWorker      *self,
+                            YggCancelFunc   func,
+                            gpointer        user_data,
+                            GDestroyNotify  notify)
+{
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+
+  if (priv->cancel_func_data_notify != NULL) {
+    priv->cancel_func_data_notify (priv->cancel_func_user_data);
+  }
+
+  priv->cancel_func = func;
+  priv->cancel_func_user_data = user_data;
+  priv->cancel_func_data_notify = notify;
+
+  return TRUE;
+}
+
 static void
 ygg_worker_constructed (GObject *object)
 {
@@ -852,6 +1013,10 @@ ygg_worker_dispose (GObject *object)
 
   if (priv->event_func_data_notify != NULL) {
     priv->event_func_data_notify (priv->event_func_user_data);
+  }
+
+  if (priv->cancel_func_data_notify != NULL) {
+    priv->cancel_func_data_notify (priv->cancel_func_user_data);
   }
 
   g_object_unref (priv->features);

@@ -128,6 +128,23 @@ typedef void (* YggRxFunc) (YggWorker   *worker,
 typedef void (* YggEventFunc) (YggDispatcherEvent event,
                                gpointer           user_data);
 
+/**
+ * YggCancelFunc:
+ * @worker: (transfer none): A #YggWorker instance.
+ * @addr: (transfer none): desination address of the data to be transmitted.
+ * @id: (transfer none): a UUID.
+ * @cancel_id: (transfer none): a UUID of the message to cancel.
+ * @user_data: (closure): Data passed to the function when it is invoked.
+ *
+ * Signature for callback function used in ygg_worker_set_cancel_func(). It is
+ * invoked each time the com.redhat.Yggdrasil1.Worker1.Cancel method is invoked.
+*/
+typedef void (* YggCancelFunc) (YggWorker *worker,
+                                gchar     *addr,
+                                gchar     *id,
+                                gchar     *cancel_id,
+                                gpointer   user_data);
+
 YggWorker *ygg_worker_new (const gchar *directive,
                            gboolean     remote_content,
                            YggMetadata *features);
@@ -177,5 +194,10 @@ gboolean ygg_worker_set_event_func (YggWorker      *worker,
                                     YggEventFunc    func,
                                     gpointer        user_data,
                                     GDestroyNotify  notify);
+
+gboolean ygg_worker_set_cancel_func (YggWorker      *worker,
+                                     YggCancelFunc   func,
+                                     gpointer        user_data,
+                                     GDestroyNotify  notify);
 
 G_END_DECLS
