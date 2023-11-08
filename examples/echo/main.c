@@ -51,18 +51,27 @@ static gint loop_times = 1;
  */
 static gint loops = 1;
 
+static GHashTable *active_sources;
+
 typedef struct _RxData
 {
-  YggWorker   *worker;
-  gchar       *addr;
-  gchar       *id;
-  gchar       *response_to;
-  YggMetadata *metadata;
-  GBytes      *data;
+  YggWorker    *worker;
+  gchar        *addr;
+  gchar        *id;
+  gchar        *response_to;
+  YggMetadata  *metadata;
+  GBytes       *data;
+  GCancellable *cancellable;
 } _RxData;
 
 static _RxData *
-_rx_data_new (YggWorker *worker, gchar *addr, gchar *id, gchar *response_to, YggMetadata *metadata, GBytes *data)
+_rx_data_new (YggWorker    *worker,
+              gchar        *addr,
+              gchar        *id,
+              gchar        *response_to,
+              YggMetadata  *metadata,
+              GBytes       *data,
+              GCancellable *cancellable)
 {
   _RxData *rx_data = g_malloc0 (sizeof (_RxData));
 
@@ -72,6 +81,7 @@ _rx_data_new (YggWorker *worker, gchar *addr, gchar *id, gchar *response_to, Ygg
   rx_data->response_to = g_strdup (response_to);
   rx_data->metadata = g_object_ref (metadata);
   rx_data->data = g_bytes_ref (data);
+  rx_data->cancellable = g_object_ref (cancellable);
 
   return rx_data;
 }
@@ -79,6 +89,7 @@ _rx_data_new (YggWorker *worker, gchar *addr, gchar *id, gchar *response_to, Ygg
 static void
 _rx_data_free (_RxData *data)
 {
+  g_object_unref (data->cancellable);
   g_bytes_unref (data->data);
   g_object_unref (data->metadata);
   g_free (data->response_to);
@@ -170,6 +181,12 @@ tx_cb (gpointer user_data)
 {
   _RxData *d = (_RxData *) user_data;
 
+  if (g_cancellable_is_cancelled (d->cancellable)) {
+    g_info ("message %s is cancelled", d->id);
+    g_hash_table_remove (active_sources, d->id);
+    return G_SOURCE_REMOVE;
+  }
+
   g_debug ("loop iteration %d of %d", loops, loop_times);
 
   g_autofree gchar *new_message_uuid = g_uuid_string_random ();
@@ -179,7 +196,7 @@ tx_cb (gpointer user_data)
                        d->id,
                        d->metadata,
                        d->data,
-                       NULL,
+                       d->cancellable,
                        (GAsyncReadyCallback) transmit_done,
                        NULL);
 
@@ -190,6 +207,15 @@ tx_cb (gpointer user_data)
     g_atomic_int_set (&loops, 1);
     return G_SOURCE_REMOVE;
   }
+}
+
+static void
+_source_destroy_notify (gpointer user_data)
+{
+  _RxData *rxdata = (_RxData *) user_data;
+
+  g_hash_table_remove (active_sources, rxdata->id);
+  _rx_data_free (rxdata);
 }
 
 /**
@@ -223,21 +249,49 @@ static void handle_rx (YggWorker   *worker,
     }
   }
 
+  GCancellable *cancellable = g_cancellable_new ();
+  g_hash_table_insert (active_sources, g_strdup (id), cancellable);
+
   // Pack the message data into a container and add the actual call to
   // ygg_worker_transmit to a GSourceFunc, to be called by an idle timer after
   // a delay of 'sleep_delay' seconds.
-  _RxData *rxdata = _rx_data_new (worker, addr, id, response_to, metadata, data);
+  _RxData *rxdata = _rx_data_new (worker,
+                                  addr,
+                                  id,
+                                  response_to,
+                                  metadata,
+                                  data,
+                                  cancellable);
   g_timeout_add_seconds_full (G_PRIORITY_DEFAULT,
                               sleep_delay,
                               G_SOURCE_FUNC (tx_cb),
                               rxdata,
-                              (GDestroyNotify) _rx_data_free);
+                              (GDestroyNotify) _source_destroy_notify);
 
   g_free (addr);
   g_free (id);
   g_free (response_to);
   g_object_unref (metadata);
   g_bytes_unref (data);
+}
+
+/**
+ * A #YggCancelFunc callback that is invoked when the worker receives a cancel
+ * message from the dispatcher.
+ */
+static void handle_cancel (YggWorker *worker,
+                           gchar     *addr,
+                           gchar     *id,
+                           gchar     *cancel_id,
+                           gpointer   user_data)
+{
+  g_debug("handle_cancel");
+  GCancellable *cancellable = g_hash_table_lookup (active_sources, cancel_id);
+  if (cancellable != NULL) {
+    g_cancellable_cancel (cancellable);
+    g_hash_table_remove (active_sources, cancel_id);
+    g_atomic_int_set (&loops, 1);
+  }
 }
 
 static gboolean
@@ -288,6 +342,11 @@ main (gint   argc,
     exit (1);
   }
 
+  active_sources = g_hash_table_new_full (g_str_hash,
+                                          g_str_equal,
+                                          g_free,
+                                          g_object_unref);
+
   // Create main context for main loop
   GMainContext *main_context = g_main_context_default ();
   g_autoptr (GMainLoop) loop = g_main_loop_new (main_context, FALSE);
@@ -306,6 +365,9 @@ main (gint   argc,
   }
   if (!ygg_worker_set_event_func (worker, handle_event, NULL, NULL)) {
     g_error ("failed to set event_func");
+  }
+  if (!ygg_worker_set_cancel_func (worker, handle_cancel, NULL, NULL)) {
+    g_error ("failed to set cancel_func");
   }
 
   g_assert_null (error);
