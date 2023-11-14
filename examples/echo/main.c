@@ -23,6 +23,16 @@
 #include <glib-unix.h>
 #include "ygg.h"
 
+#if !GLIB_CHECK_VERSION(2, 58, 0)
+#  define G_SOURCE_FUNC(f) ((GSourceFunc) (void (*)(void)) (f))
+
+static gchar *
+g_date_time_format_iso8601 (GDateTime *datetime)
+{
+  return g_date_time_format (datetime, "%C%y-%m-%dT%H:%M:%S.%fZ");
+}
+#endif
+
 static void
 foreach (const gchar *key,
               const gchar *value,
