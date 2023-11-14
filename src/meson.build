@@ -42,7 +42,6 @@ libygg_deps = [
 
 add_project_arguments(
   '-DGLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_56',
-  '-DGLIB_VERSION_MAX_ALLOWED=GLIB_VERSION_2_68',
   language: 'c'
 )
 
