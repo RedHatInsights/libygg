@@ -87,6 +87,9 @@ libygg_gir = gnome.generate_gir(libygg,
 )
 
 test_deps = libygg_deps
+test_args = [
+  '--tap',
+]
 
 test('test-ygg-metadata',
   executable('test-ygg-metadata',
@@ -99,6 +102,7 @@ test('test-ygg-metadata',
     'G_TEST_BUILDDIR=@0@'.format(meson.current_build_dir()),
   ],
   protocol: 'tap',
+  args: test_args,
 )
 
 test('test-ygg-worker',
@@ -112,4 +116,5 @@ test('test-ygg-worker',
     'G_TEST_BUILDDIR=@0@'.format(meson.current_build_dir()),
   ],
   protocol: 'tap',
+  args: test_args,
 )
