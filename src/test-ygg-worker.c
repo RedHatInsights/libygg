@@ -21,6 +21,7 @@
 
 #include <glib.h>
 #include <locale.h>
+#include <stdlib.h>
 
 #include "ygg.h"
 
@@ -53,7 +54,11 @@ fixture_setup (TestFixture   *fixture,
   /* Add the private directory with our in-tree service files.
    */
   relative = g_test_build_filename (G_TEST_BUILT, "services", NULL);
+#if GLIB_CHECK_VERSION(2, 58, 0)
   servicesdir = g_canonicalize_filename (relative, NULL);
+#else
+  servicesdir = realpath (relative, NULL);
+#endif
   g_test_dbus_add_service_dir (fixture->dbus, servicesdir);
 
   /* Start the private D-Bus daemon
@@ -99,7 +104,11 @@ main (int   argc,
       char *argv[])
 {
   setlocale (LC_ALL, "");
-  g_test_init (&argc, &argv, G_TEST_OPTION_ISOLATE_DIRS, NULL);
+  g_test_init (&argc, &argv,
+#if GLIB_CHECK_VERSION(2, 60, 0)
+               G_TEST_OPTION_ISOLATE_DIRS,
+#endif
+               NULL);
 
   g_test_add ("/ygg/worker/connect",
               TestFixture,
