@@ -55,7 +55,7 @@ message_new (YggWorker   *worker,
              YggMetadata *metadata,
              GBytes      *data)
 {
-  Message *message = g_rc_box_new0 (Message);
+  Message *message = (Message *) g_new0 (Message, 1);
 
   message->worker = g_object_ref (worker);
   message->addr = g_strdup (addr);
@@ -135,7 +135,7 @@ message_free (Message *message)
   g_free (message->response_to);
   g_object_unref (message->metadata);
   g_bytes_unref (message->data);
-  g_rc_box_release (message);
+  g_free (message);
 }
 
 G_DEFINE_QUARK (ygg-worker-error-quark, ygg_worker_error)
