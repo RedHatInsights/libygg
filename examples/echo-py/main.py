@@ -9,9 +9,10 @@ import gi
 try:
     # Import required modules from the g-i repository
     gi.require_version("Ygg", "0")
+    gi.require_version("Gio", "2.0")
     gi.require_version("GLib", "2.0")
 
-    from gi.repository import GLib, Ygg
+    from gi.repository import Gio, GLib, Ygg
 except ImportError or ValueError as e:
     logging.error("cannot import {}".format(e))
 
@@ -21,6 +22,9 @@ sleep_delay = 0
 # Number of iterations to repeat when echoing a response.
 loop_times = 1
 
+# A dictionary of ID-to-Gio.Cancellables to keep in case the message needs to be
+# cancelled.
+active_sources = {}
 
 
 def transmit_done(worker, result):
@@ -40,7 +44,12 @@ def transmit_done(worker, result):
 
 
 def tx_cb(data):
-    global loops
+    global active_sources
+
+    if data["cancellable"].is_cancelled():
+        logging.info("message {} is cancelled".format(data["id"]))
+        return GLib.SOURCE_REMOVE
+
     logging.debug("loop iteration {} of {}".format(data["loops"], loop_times))
     worker.transmit(
         data["addr"],
@@ -51,12 +60,12 @@ def tx_cb(data):
         None,
         transmit_done,
     )
-    if loops < loop_times:
-        loops += 1
     if data["loops"] < loop_times:
         data["loops"] += 1
         return GLib.SOURCE_CONTINUE
     else:
+        data["loops"] = 1
+        del active_sources[data["id"]]
         return GLib.SOURCE_REMOVE
 
 
@@ -79,15 +88,32 @@ def handle_rx(worker, addr, id, response_to, meta_data, data):
     # dispatcher that the worker is actively working.
     worker.emit_event(Ygg.WorkerEvent.WORKING, id, response_to, event_data)
 
+    cancellable = Gio.Cancellable.new()
+    active_sources[id] = cancellable
     tx_data = {
         "addr": addr,
         "id": id,
         "response_to": response_to,
         "metadata": meta_data,
         "data": data,
+        "cancellable": cancellable,
         "loops": 1,
     }
     GLib.timeout_add_seconds(sleep_delay, tx_cb, tx_data)
+
+
+def handle_cancel(worker, addr, id, cancel_id):
+    """
+    A callback that is invoked when the worker receives a cancel message from
+    the dispatcher.
+    """
+    global active_sources
+
+    logging.debug("handle_cancel")
+    cancellable = active_sources[cancel_id]
+    if cancellable is not None:
+        cancellable.cancel()
+        del active_sources[cancel_id]
 
 
 def handle_event(event):
@@ -134,6 +160,9 @@ if __name__ == "__main__":
 
     # Set an event receive handler function
     worker.set_event_func(handle_event)
+
+    # Set a cancel handler function
+    worker.set_cancel_func(handle_cancel)
 
     # Connect the worker
     worker.connect()
