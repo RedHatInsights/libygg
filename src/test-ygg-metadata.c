@@ -59,8 +59,8 @@ _foreach (const gchar *key,
           const gchar *val,
           gpointer     user_data)
 {
-  GString *output = (GString *) user_data;
-  g_string_append_printf (output, "'%s' = '%s'\n", key, val);
+  GList *keys = (GList *) user_data;
+  (void) ! g_list_append (keys, g_strdup_printf ("'%s' = '%s'", key, val));
 }
 
 static void
@@ -70,9 +70,11 @@ test_ygg_metadata_foreach (void)
   g_autoptr (GVariant) variant = g_variant_new_parsed ("{'key': 'val', 'a': 'b'}");
   g_autoptr (YggMetadata) metadata = ygg_metadata_new_from_variant (variant, &err);
   g_assert_null (err);
-  g_autoptr (GString) output = g_string_new (NULL);
-  ygg_metadata_foreach (metadata, _foreach, output);
-  g_assert_cmpstr (output->str, ==, "'key' = 'val'\n'a' = 'b'\n");
+  GList *keys = g_list_alloc ();
+  ygg_metadata_foreach (metadata, _foreach, keys);
+  g_assert_nonnull (g_list_find_custom (keys, "'key' = 'val'", (GCompareFunc) g_strcmp0));
+  g_assert_nonnull (g_list_find_custom (keys, "'a' = 'b'", (GCompareFunc) g_strcmp0));
+  g_list_free_full (keys, g_free);
 }
 
 int
