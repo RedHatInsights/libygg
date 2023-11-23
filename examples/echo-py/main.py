@@ -3,6 +3,7 @@ import argparse
 import datetime
 import logging
 import uuid
+from typing import Any, Optional
 
 import gi
 
@@ -16,7 +17,7 @@ except ImportError or ValueError as e:
     logging.error("cannot import {}".format(e))
 
 
-def transmit_done(worker, result):
+def transmit_done(worker: Ygg.Worker, result):
     """
     A callback that is invoked once when the `transmit` method call
     finishes.
@@ -32,10 +33,22 @@ def transmit_done(worker, result):
         worker.set_feature("UpdatedAt", datetime.datetime.now().isoformat())
 
 
-def handle_rx(worker, addr, id, response_to, meta_data, data):
-    """
-    A callback that is invoked each time the worker receives data from the
-    dispatcher.
+def handle_rx(
+    worker: Ygg.Worker,
+    addr: str,
+    id: "Ygg.UUID",
+    response_to: Optional["Ygg.UUID"],
+    meta_data: Optional[dict[str, Any]],
+    data: Any,
+):
+    """Function invoked each time data are received from the dispatcher.
+
+    :param worker: An instance of `Ygg.Worker`.
+    :param addr: Destination of the data to be transmitted.
+    :param id: A UUID.
+    :param response_to: A UUID the data is the response to.
+    :param meta_data: A set of key/value pairs.
+    :param data: The data.
     """
     logging.debug("handle_rx")
     logging.debug("addr = {}".format(addr))
@@ -52,8 +65,9 @@ def handle_rx(worker, addr, id, response_to, meta_data, data):
     worker.transmit(addr, str(uuid.uuid4()), id, meta_data, data, None, transmit_done)
 
 
-def handle_event(event):
-    """
+def handle_event(event: Ygg.WorkerEvent):
+    """Function called on an event signal.
+
     A callback that is invoked each time the worker receives an event signal
     from the dispatcher.
     """
@@ -72,7 +86,7 @@ if __name__ == "__main__":
     # Set the log level parsed from flags
     logging.basicConfig(level=args.log_level)
 
-    # Create a worker with the directive value 'echo_py'.
+    # Create a worker with the directive value 'echo'
     worker = Ygg.Worker(directive=args.directive, remote_content=False, features=None)
 
     # Set a data receive handler function
