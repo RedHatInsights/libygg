@@ -21,3 +21,9 @@ configure_file(
   install_dir: dbus.get_variable('system_bus_services_dir'),
   install: get_option('install_examples'),
 )
+
+if get_option('install_examples')
+  install_data('com.redhat.Yggdrasil1.Worker1.echo.conf',
+    install_dir: join_paths(dbus.get_variable(pkgconfig: 'datadir'), 'dbus-1', 'system.d'),
+  )
+endif
