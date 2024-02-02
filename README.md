@@ -27,6 +27,19 @@ It is also possible to compile _libygg_ into an RPM suitable for installation on
 Fedora-based distributions. See the README in [dist/srpm](./dist/srpm) for
 details.
 
+### Python stubs
+
+_libygg_ can be used in Python as a `gi.repository` module (see the `examples/` directory).
+
+You can install the type stubs into your virtual environment:
+
+```bash
+python3 -m pip install PyGObject-stubs
+python3 -m pip install ./python
+# Or, without cloning this repository:
+python3 -m pip install git+https://github.com/RedHatInsights/libygg.git@main#subdirectory=python
+```
+
 ## Features
 
 * Worker Developer API
