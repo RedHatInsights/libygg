@@ -246,6 +246,13 @@ enum {
 
 static GParamSpec *properties [N_PROPS];
 
+enum {
+  SIGNAL_CONNECTED = 1,
+  SIGNAL_DISCONNECTED,
+  N_SIGNALS
+};
+static guint signals[N_SIGNALS];
+
 /**
  * invoke_rx:
  * @user_data: (transfer full): The received #Message.
@@ -555,6 +562,8 @@ on_bus_acquired (GDBusConnection *connection,
                  const gchar     *name,
                  gpointer         user_data)
 {
+  g_debug ("on_bus_acquired: %s", name);
+
   YggWorker *self = YGG_WORKER (user_data);
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
 
@@ -583,6 +592,8 @@ on_bus_acquired (GDBusConnection *connection,
                                       handle_signal,
                                       self,
                                       NULL);
+
+  g_signal_emit (self, signals[SIGNAL_CONNECTED], 0);
 }
 
 static void
@@ -590,7 +601,7 @@ on_name_acquired (GDBusConnection *connection,
                   const gchar     *name,
                   gpointer         user_data)
 {
-  g_debug ("acquired name %s", name);
+  g_debug ("on_name_acquired: %s", name);
 }
 
 static void
@@ -598,7 +609,10 @@ on_name_lost (GDBusConnection *connection,
               const gchar     *name,
               gpointer         user_data)
 {
-  g_debug ("lost name %s", name);
+  g_debug ("on_name_lost: %s", name);
+
+  YggWorker *self = YGG_WORKER (user_data);
+  g_signal_emit (self, signals[SIGNAL_DISCONNECTED], 0);
 }
 
 /**
@@ -1133,6 +1147,42 @@ ygg_worker_class_init (YggWorkerClass *klass)
   properties[PROP_FEATURES] = g_param_spec_object ("features", NULL, NULL, YGG_TYPE_METADATA,
                                                   G_PARAM_READWRITE|G_PARAM_CONSTRUCT_ONLY);
   g_object_class_install_properties (object_class, N_PROPS, properties);
+
+  /**
+   * YggWorker::connected:
+   * @worker: The #YggWorker instance emitting the signal.
+   * 
+   * Emitted when the the worker is connected to the bus and ready to receive
+   * messages.
+   */
+  signals[SIGNAL_CONNECTED] = g_signal_newv ("connected",
+                                             G_TYPE_FROM_CLASS (object_class),
+                                             G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
+                                             NULL,
+                                             NULL,
+                                             NULL,
+                                             NULL,
+                                             G_TYPE_NONE,
+                                             0,
+                                             NULL);
+
+  /**
+   * YggWorker::disconnected:
+   * @worker: The #YggWorker instance emitting the signal.
+   * 
+   * Emitted when the the worker is disconnected from the bus and is no longer
+   * able to receive messages.
+   */
+  signals[SIGNAL_DISCONNECTED] = g_signal_newv ("disconnected",
+                                                G_TYPE_FROM_CLASS (object_class),
+                                                G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
+                                                NULL,
+                                                NULL,
+                                                NULL,
+                                                NULL,
+                                                G_TYPE_NONE,
+                                                0,
+                                                NULL);
 
   GError *err = NULL;
 
