@@ -123,7 +123,12 @@ message_to_variant (Message *msg)
   g_variant_builder_open (&builder, G_VARIANT_TYPE( "a{ss}"));
   ygg_metadata_foreach (msg->metadata, metadata_foreach_builder_add, &builder);
   g_variant_builder_close (&builder);
-  g_variant_builder_add_value (&builder, g_variant_new_bytestring (g_bytes_get_data (msg->data, NULL)));
+  g_variant_builder_open (&builder, G_VARIANT_TYPE ("ay"));
+  const guint8 *bytes = g_bytes_get_data (msg->data, NULL);
+  for (int i = 0; i < g_bytes_get_size (msg->data); i++) {
+    g_variant_builder_add (&builder, "y", bytes[i]);
+  }
+  g_variant_builder_close (&builder);
   return g_variant_builder_end (&builder);
 }
 
