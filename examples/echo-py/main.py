@@ -124,6 +124,14 @@ def handle_event(event):
     print(event)
 
 
+def disconnected_signal_handler(worker, loop):
+    """
+    A callback that is invoked when the worker emits the 'disconnected' signal.
+    """
+    logging.debug("disconnected_signal_handler")
+    loop.quit()
+
+
 if __name__ == "__main__":
     # Set up argument parsing and a flag for log level
     parser = argparse.ArgumentParser()
@@ -167,6 +175,11 @@ if __name__ == "__main__":
     # Connect the worker
     worker.connect()
 
-    # Start the main run loop
+    # Create the main run loop
     loop = GLib.MainLoop()
+
+    # Connect a signal handler to the worker's disconnected signal
+    worker.connect_after("disconnected", disconnected_signal_handler, loop)
+
+    # Run the main loop
     loop.run()

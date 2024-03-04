@@ -304,6 +304,14 @@ sigint_callback (gpointer main_loop) {
   return G_SOURCE_REMOVE;
 }
 
+static void
+disconnected_signal_handler (G_GNUC_UNUSED YggWorker *worker,
+                             gpointer                 user_data)
+{
+  g_debug ("disconnected_signal_handler");
+  g_main_loop_quit (user_data);
+}
+
 gint
 main (gint   argc,
       gchar *argv[])
@@ -369,6 +377,12 @@ main (gint   argc,
   if (!ygg_worker_set_cancel_func (worker, handle_cancel, NULL, NULL)) {
     g_error ("failed to set cancel_func");
   }
+
+  // Connect a signal handler to the "YggWorker::disconnected" signal
+  g_signal_connect (worker,
+                    "disconnected",
+                    G_CALLBACK (disconnected_signal_handler),
+                    loop);
 
   g_assert_null (error);
   if (!ygg_worker_connect (worker, &error)) {
