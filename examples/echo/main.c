@@ -53,7 +53,7 @@ static gint loops = 1;
 
 static GHashTable *active_sources;
 
-typedef struct _RxData
+typedef struct _EchoRxData
 {
   YggWorker    *worker;
   gchar        *addr;
@@ -62,9 +62,9 @@ typedef struct _RxData
   YggMetadata  *metadata;
   GBytes       *data;
   GCancellable *cancellable;
-} _RxData;
+} _EchoRxData;
 
-static _RxData *
+static _EchoRxData *
 _rx_data_new (YggWorker    *worker,
               gchar        *addr,
               gchar        *id,
@@ -73,7 +73,7 @@ _rx_data_new (YggWorker    *worker,
               GBytes       *data,
               GCancellable *cancellable)
 {
-  _RxData *rx_data = g_malloc0 (sizeof (_RxData));
+  _EchoRxData *rx_data = g_malloc0 (sizeof (_EchoRxData));
 
   rx_data->worker = g_object_ref (worker);
   rx_data->addr = g_strdup (addr);
@@ -87,7 +87,7 @@ _rx_data_new (YggWorker    *worker,
 }
 
 static void
-_rx_data_free (_RxData *data)
+_rx_data_free (_EchoRxData *data)
 {
   g_object_unref (data->cancellable);
   g_bytes_unref (data->data);
@@ -179,7 +179,7 @@ static void handle_event (YggDispatcherEvent event,
 static gboolean
 tx_cb (gpointer user_data)
 {
-  _RxData *d = (_RxData *) user_data;
+  _EchoRxData *d = (_EchoRxData *) user_data;
 
   if (g_cancellable_is_cancelled (d->cancellable)) {
     g_info ("message %s is cancelled", d->id);
@@ -212,7 +212,7 @@ tx_cb (gpointer user_data)
 static void
 _source_destroy_notify (gpointer user_data)
 {
-  _RxData *rxdata = (_RxData *) user_data;
+  _EchoRxData *rxdata = (_EchoRxData *) user_data;
 
   g_hash_table_remove (active_sources, rxdata->id);
   _rx_data_free (rxdata);
@@ -255,13 +255,13 @@ static void handle_rx (YggWorker   *worker,
   // Pack the message data into a container and add the actual call to
   // ygg_worker_transmit to a GSourceFunc, to be called by an idle timer after
   // a delay of 'sleep_delay' seconds.
-  _RxData *rxdata = _rx_data_new (worker,
-                                  addr,
-                                  id,
-                                  response_to,
-                                  metadata,
-                                  data,
-                                  cancellable);
+  _EchoRxData *rxdata = _rx_data_new (worker,
+                                      addr,
+                                      id,
+                                      response_to,
+                                      metadata,
+                                      data,
+                                      cancellable);
   g_timeout_add_seconds_full (G_PRIORITY_DEFAULT,
                               sleep_delay,
                               G_SOURCE_FUNC (tx_cb),
