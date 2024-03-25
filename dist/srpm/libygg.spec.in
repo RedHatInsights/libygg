@@ -4,6 +4,7 @@
 # the package.
 
 %bcond_without check
+%bcond_without install_examples
 
 %global forgeurl https://github.com/RedHatInsights/libygg
 %global commit   @COMMIT@
@@ -36,7 +37,9 @@ BuildRequires:  pkgconfig(dbus-1)
 BuildRequires:  pkgconfig(gio-2.0) >= 2.56.0
 BuildRequires:  pkgconfig(gobject-introspection-1.0)
 BuildRequires:  yggdrasil >= 0.3.2
+%if %{with check}
 BuildRequires:  /usr/bin/dbus-daemon
+%endif
 
 %description %{common_description}
 
@@ -49,11 +52,22 @@ Requires:       %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
 
 %{summary}.
 
+%if %{with install_examples}
+%package examples
+Summary:       Example workers using libygg
+Requires:      %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
+
+%description examples
+%{common_description}
+
+%{summary}.
+%endif
+
 %prep
 %forgesetup
 
 %build
-%meson
+%meson %{?with_install_examples:-Dinstall_examples=True}
 %meson_build
 
 %install
@@ -70,7 +84,6 @@ Requires:       %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
 %{_libdir}/%{name}*.so.*
 %dir %{_libdir}/girepository-1.0
 %{_libdir}/girepository-1.0/*.typelib
-%{_datadir}/dbus-1/system.d/*.conf
 
 %files devel
 %dir %{_datadir}/gir-1.0
@@ -78,3 +91,10 @@ Requires:       %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
 %{_includedir}/%{name}*/*.h
 %{_libdir}/%{name}*.so
 %{_libdir}/pkgconfig/*.pc
+
+%if %{with install_examples}
+%files examples
+%{_bindir}/yggdrasil-worker-*
+%{_datadir}/dbus-1/system-services/*
+%{_datadir}/dbus-1/system.d/*.conf
+%endif
