@@ -65,7 +65,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-l", "--log-level", help="set logging level")
     parser.add_argument(
-        "-d", "--directive", help="connect using directive", default="echo"
+        "-d", "--directive", help="connect using directive", default="echo_py"
     )
     args = parser.parse_args()
 
