@@ -1,0 +1,49 @@
+upstream_package_name: libygg
+downstream_package_name: libygg
+specfile_path: builddir/dist/srpm/libygg.spec
+
+srpm_build_deps:
+  - gawk
+  - gcc
+  - git-core
+  - meson
+  - "pkgconfig(dbus-1)"
+  - "pkgconfig(gio-2.0)"
+  - "pkgconfig(gobject-introspection-1.0)"
+  - rpm-build
+  - yggdrasil
+
+actions:
+  post-upstream-clone:
+    - meson setup builddir -Dbuild_srpm=True -Dinstall_examples=True --wipe
+    - meson compile tarball -C builddir
+  get-current-version:
+    - awk '/^Version:/ {print $2;}' builddir/dist/srpm/libygg.spec
+  create-archive:
+    - bash -c 'echo builddir/dist/srpm/libygg-*.tar.*'
+  fix-spec-file:
+    - bash -c 'echo "No action needed"'
+
+jobs:
+  - job: copr_build
+    trigger: pull_request
+    additional_repos:
+      - "copr://@yggdrasil/latest"
+    targets:
+      - centos-stream-8
+      - centos-stream-9
+      - fedora-all
+      - rhel-8
+      - rhel-9
+
+  - job: copr_build
+    trigger: commit
+    branch: main
+    owner: "@yggdrasil"
+    project: latest
+    targets:
+      - centos-stream-8
+      - centos-stream-9
+      - fedora-all
+      - rhel-8
+      - rhel-9
