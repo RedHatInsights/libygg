@@ -70,6 +70,7 @@ Requires:       %{name}%{?_isa} = %{?epoch:%{epoch}:}%{version}-%{release}
 %{_libdir}/%{name}*.so.*
 %dir %{_libdir}/girepository-1.0
 %{_libdir}/girepository-1.0/*.typelib
+%{_datadir}/dbus-1/system.d/*.conf
 
 %files devel
 %dir %{_datadir}/gir-1.0
