@@ -67,8 +67,8 @@ pkg.generate(
 )
 
 introspection_files = files(
-  dbus.get_variable('interfaces_dir') / 'com.redhat.Yggdrasil1.Worker1.xml',
-  dbus.get_variable('interfaces_dir') / 'com.redhat.Yggdrasil1.Dispatcher1.xml',
+  worker_interface_file,
+  dispatcher_interface_file,
 )
 yggdrasil = declare_dependency(sources: introspection_files)
 
