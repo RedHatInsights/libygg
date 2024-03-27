@@ -45,7 +45,7 @@ static void
 fixture_setup (TestFixture   *fixture,
                gconstpointer  user_data)
 {
-  g_autofree gchar *relative, *servicesdir;
+  g_autofree gchar *relative = NULL, *servicesdir = NULL;
 
   /* Create the global dbus-daemon for this test suite
    */
