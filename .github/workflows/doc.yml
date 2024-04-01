@@ -36,7 +36,7 @@ jobs:
     steps:
       - run: dnf install --assumeyes $PACKAGES
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v4
+      - uses: actions/configure-pages@v5
       - run: git config --system --add safe.directory $GITHUB_WORKSPACE
       - run: meson setup $GITHUB_WORKSPACE/builddir
       - run: meson compile -C $GITHUB_WORKSPACE/builddir
