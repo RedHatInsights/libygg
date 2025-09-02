@@ -32,7 +32,6 @@ jobs:
     targets:
       - centos-stream-9
       - fedora-all
-      - rhel-8
       - rhel-9
 
   - job: copr_build
@@ -43,5 +42,4 @@ jobs:
     targets:
       - centos-stream-9
       - fedora-all
-      - rhel-8
       - rhel-9
