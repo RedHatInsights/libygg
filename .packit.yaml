@@ -30,7 +30,6 @@ jobs:
     additional_repos:
       - "copr://@yggdrasil/latest"
     targets:
-      - centos-stream-8
       - centos-stream-9
       - fedora-all
       - rhel-8
@@ -42,7 +41,6 @@ jobs:
     owner: "@yggdrasil"
     project: latest
     targets:
-      - centos-stream-8
       - centos-stream-9
       - fedora-all
       - rhel-8
