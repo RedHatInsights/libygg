@@ -123,7 +123,12 @@ message_to_variant (Message *msg)
   g_variant_builder_open (&builder, G_VARIANT_TYPE( "a{ss}"));
   ygg_metadata_foreach (msg->metadata, metadata_foreach_builder_add, &builder);
   g_variant_builder_close (&builder);
-  g_variant_builder_add_value (&builder, g_variant_new_bytestring (g_bytes_get_data (msg->data, NULL)));
+  g_variant_builder_open (&builder, G_VARIANT_TYPE ("ay"));
+  const guint8 *bytes = g_bytes_get_data (msg->data, NULL);
+  for (int i = 0; i < g_bytes_get_size (msg->data); i++) {
+    g_variant_builder_add (&builder, "y", bytes[i]);
+  }
+  g_variant_builder_close (&builder);
   return g_variant_builder_end (&builder);
 }
 
@@ -135,6 +140,69 @@ message_free (Message *message)
   g_free (message->response_to);
   g_object_unref (message->metadata);
   g_bytes_unref (message->data);
+  g_free (message);
+}
+
+typedef struct {
+  YggWorker *worker;
+  gchar     *addr;
+  gchar     *id;
+  gchar     *cancel_id;
+} CancelMessage;
+
+/**
+ * cancel_message_new:
+ * @worker: (transfer none): A #YggWorker;
+ * @addr: (transfer none): Address of the message.
+ * @id: (transfer none): ID of the message.
+ * @cancel_id: (transfer none): ID of the message to cancel.
+ * 
+ * Creates a new #CancelMessage.
+ * 
+ * Returns: (transfer full): A newly created #CancelMessage.
+*/
+static CancelMessage *
+cancel_message_new (YggWorker *worker,
+                    gchar     *addr,
+                    gchar     *id,
+                    gchar     *cancel_id)
+{
+  CancelMessage *message = (CancelMessage *) g_new0 (CancelMessage, 1);
+
+  message->worker = g_object_ref (worker);
+  message->addr = g_strdup (addr);
+  message->id = g_strdup (id);
+  message->cancel_id = g_strdup (cancel_id);
+
+  return message;
+}
+
+static CancelMessage *
+cancel_message_new_from_variant (YggWorker  *worker,
+                                 GVariant   *parameters)
+{
+  GVariantIter iter;
+  g_variant_iter_init (&iter, parameters);
+
+  g_autofree gchar *addr = NULL;
+  g_variant_iter_next (&iter, "s", &addr);
+
+  g_autofree gchar *id = NULL;
+  g_variant_iter_next (&iter, "s", &id);
+
+  g_autofree gchar *cancel_id = NULL;
+  g_variant_iter_next (&iter, "s", &cancel_id);
+
+  CancelMessage *msg = cancel_message_new (worker, addr, id, cancel_id);
+  return msg;
+}
+
+static void
+cancel_message_free (CancelMessage *message)
+{
+  g_free (message->addr);
+  g_free (message->id);
+  g_free (message->cancel_id);
   g_free (message);
 }
 
@@ -159,6 +227,9 @@ typedef struct
   YggEventFunc   event_func;
   gpointer       event_func_user_data;
   GDestroyNotify event_func_data_notify;
+  YggCancelFunc  cancel_func;
+  gpointer       cancel_func_user_data;
+  GDestroyNotify cancel_func_data_notify;
   guint          bus_id;
   gchar         *bus_name;
   gchar         *object_path;
@@ -174,6 +245,13 @@ enum {
 };
 
 static GParamSpec *properties [N_PROPS];
+
+enum {
+  SIGNAL_CONNECTED = 1,
+  SIGNAL_DISCONNECTED,
+  N_SIGNALS
+};
+static guint signals[N_SIGNALS];
 
 /**
  * invoke_rx:
@@ -195,7 +273,7 @@ invoke_rx (gpointer user_data)
   GError *err = NULL;
 
   g_assert_null (err);
-  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_BEGIN, msg->id, "", &err)) {
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_BEGIN, msg->id, msg->response_to, NULL, &err)) {
     if (err != NULL) {
       g_critical ("%s", err->message);
       goto out;
@@ -212,7 +290,7 @@ invoke_rx (gpointer user_data)
                  priv->rx_func_user_data);
 
   g_assert_null (err);
-  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, msg->id, "", &err)) {
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, msg->id, msg->response_to, NULL, &err)) {
     if (err != NULL) {
       g_critical ("%s", err->message);
       goto out;
@@ -221,6 +299,54 @@ invoke_rx (gpointer user_data)
 
 out:
   message_free (msg);
+
+  return G_SOURCE_REMOVE;
+}
+
+/**
+ * invoke_cancel:
+ * @user_data: (transfer full): The received #CancelMessage.
+ * 
+ * A #GSourceFunc that handles com.redhat.Yggdrasil1.Worker1.Cancel
+ * asynchronously.
+ * 
+ * Returns %G_SOURCE_REMOVE, indicating that this callback should only be
+ * invoked once.
+*/
+static gboolean
+invoke_cancel (gpointer user_data)
+{
+  g_debug ("invoke_cancel");
+  CancelMessage *msg = (CancelMessage *) user_data;
+  YggWorker *self = YGG_WORKER (msg->worker);
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+  GError *err = NULL;
+
+  g_assert_null (err);
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_BEGIN, msg->id, NULL, NULL, &err)) {
+    if (err != NULL) {
+      g_critical ("%s", err->message);
+      goto out;
+    }
+  }
+
+  g_assert_nonnull (priv->cancel_func);
+  priv->cancel_func (self,
+                      msg->addr,
+                      msg->id,
+                      msg->cancel_id,
+                      priv->cancel_func_user_data);
+
+  g_assert_null (err);
+  if (!ygg_worker_emit_event (self, YGG_WORKER_EVENT_END, msg->id, NULL, NULL, &err)) {
+    if (err != NULL) {
+      g_critical ("%s", err->message);
+      goto out;
+    }
+  }
+
+out:
+  cancel_message_free (msg);
 
   return G_SOURCE_REMOVE;
 }
@@ -312,6 +438,8 @@ handle_method_call (GDBusConnection       *connection,
 {
   YggWorker *self = YGG_WORKER (user_data);
 
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+
   g_autofree gchar *print_params = g_variant_print (parameters, TRUE);
   g_debug ("%s parameters: %s", method_name, print_params);
 
@@ -325,6 +453,19 @@ handle_method_call (GDBusConnection       *connection,
     }
 
     g_idle_add (invoke_rx, msg);
+    g_dbus_method_invocation_return_value (invocation, NULL);
+    return;
+  } else if (g_strcmp0 (method_name, "Cancel") == 0) {
+    if (priv->cancel_func == NULL) {
+      g_dbus_method_invocation_return_dbus_error (invocation,
+                                                  "org.freedesktop.DBus.UnknownInterface",
+                                                  "Cancel method not implemented");
+      return;
+    }
+
+    CancelMessage *msg = cancel_message_new_from_variant (self, parameters);
+
+    g_idle_add (invoke_cancel, msg);
     g_dbus_method_invocation_return_value (invocation, NULL);
     return;
   } else {
@@ -421,6 +562,8 @@ on_bus_acquired (GDBusConnection *connection,
                  const gchar     *name,
                  gpointer         user_data)
 {
+  g_debug ("on_bus_acquired: %s", name);
+
   YggWorker *self = YGG_WORKER (user_data);
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
 
@@ -449,6 +592,8 @@ on_bus_acquired (GDBusConnection *connection,
                                       handle_signal,
                                       self,
                                       NULL);
+
+  g_signal_emit (self, signals[SIGNAL_CONNECTED], 0);
 }
 
 static void
@@ -456,7 +601,7 @@ on_name_acquired (GDBusConnection *connection,
                   const gchar     *name,
                   gpointer         user_data)
 {
-  g_debug ("acquired name %s", name);
+  g_debug ("on_name_acquired: %s", name);
 }
 
 static void
@@ -464,7 +609,10 @@ on_name_lost (GDBusConnection *connection,
               const gchar     *name,
               gpointer         user_data)
 {
-  g_debug ("lost name %s", name);
+  g_debug ("on_name_lost: %s", name);
+
+  YggWorker *self = YGG_WORKER (user_data);
+  g_signal_emit (self, signals[SIGNAL_DISCONNECTED], 0);
 }
 
 /**
@@ -634,7 +782,8 @@ ygg_worker_transmit (YggWorker           *self,
  * @worker: A #YggWorker instance.
  * @event: The #YggWorkerEvent to emit.
  * @message_id: The message ID.
- * @message: (nullable): An optional message to include with the emitted signal.
+ * @response_to: (nullable): ID of the message this message is in response to.
+ * @data: (nullable): Key-value pairs of optional data provided with the event.
  * @error: (nullable): Return location for a recoverable error.
  *
  * Emits a com.redhat.Yggdrasil1.Worker1.Event signal.
@@ -644,10 +793,13 @@ ygg_worker_transmit (YggWorker           *self,
 gboolean ygg_worker_emit_event (YggWorker       *self,
                                 YggWorkerEvent   event,
                                 const gchar     *message_id,
-                                const gchar     *message,
+                                const gchar     *response_to,
+                                YggMetadata     *data,
                                 GError         **error)
 {
   GError *err = NULL;
+
+  g_debug ("ygg_worker_emit_event");
 
   YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
 
@@ -659,12 +811,27 @@ gboolean ygg_worker_emit_event (YggWorker       *self,
     return FALSE;
   }
 
+  GVariantBuilder builder;
+  g_variant_builder_init (&builder, G_VARIANT_TYPE ("(ussa{ss})"));
+  g_variant_builder_add (&builder, "u", event);
+  g_variant_builder_add (&builder, "s", message_id);
+  if (response_to != NULL) {
+    g_variant_builder_add (&builder, "s", response_to);
+  } else {
+    g_variant_builder_add (&builder, "s", "");
+  }
+  g_variant_builder_open (&builder, G_VARIANT_TYPE ("a{ss}"));
+  if (data != NULL) {
+    ygg_metadata_foreach (data, metadata_foreach_builder_add, &builder);
+  }
+  g_variant_builder_close (&builder);
+
   return g_dbus_connection_emit_signal (connection,
                                         NULL,
                                         priv->object_path,
                                         "com.redhat.Yggdrasil1.Worker1",
                                         "Event",
-                                        g_variant_new ("(uss)", event, message_id, message),
+                                        g_variant_builder_end (&builder),
                                         error);
 }
 
@@ -808,6 +975,38 @@ ygg_worker_set_event_func (YggWorker      *self,
   return TRUE;
 }
 
+/**
+ * ygg_worker_set_cancel_func:
+ * @worker: A #YggWorker instance.
+ * @func: (scope notified) (closure user_data): A #YggCancelFunc callback.
+ * @user_data: User data passed to @func when it is invoked.
+ * @notify (nullable): A #GDestroyNotify that is called when the reference to
+ * @func is dropped.
+ * 
+ * Stores a pointer to a handler function that is invoked when a message
+ * cancellation request is received by the worker.
+ * 
+ * Returns: %TRUE if setting the function handler succeeded.
+*/
+gboolean
+ygg_worker_set_cancel_func (YggWorker      *self,
+                            YggCancelFunc   func,
+                            gpointer        user_data,
+                            GDestroyNotify  notify)
+{
+  YggWorkerPrivate *priv = ygg_worker_get_instance_private (self);
+
+  if (priv->cancel_func_data_notify != NULL) {
+    priv->cancel_func_data_notify (priv->cancel_func_user_data);
+  }
+
+  priv->cancel_func = func;
+  priv->cancel_func_user_data = user_data;
+  priv->cancel_func_data_notify = notify;
+
+  return TRUE;
+}
+
 static void
 ygg_worker_constructed (GObject *object)
 {
@@ -833,6 +1032,10 @@ ygg_worker_dispose (GObject *object)
 
   if (priv->event_func_data_notify != NULL) {
     priv->event_func_data_notify (priv->event_func_user_data);
+  }
+
+  if (priv->cancel_func_data_notify != NULL) {
+    priv->cancel_func_data_notify (priv->cancel_func_user_data);
   }
 
   g_object_unref (priv->features);
@@ -944,6 +1147,42 @@ ygg_worker_class_init (YggWorkerClass *klass)
   properties[PROP_FEATURES] = g_param_spec_object ("features", NULL, NULL, YGG_TYPE_METADATA,
                                                   G_PARAM_READWRITE|G_PARAM_CONSTRUCT_ONLY);
   g_object_class_install_properties (object_class, N_PROPS, properties);
+
+  /**
+   * YggWorker::connected:
+   * @worker: The #YggWorker instance emitting the signal.
+   * 
+   * Emitted when the the worker is connected to the bus and ready to receive
+   * messages.
+   */
+  signals[SIGNAL_CONNECTED] = g_signal_newv ("connected",
+                                             G_TYPE_FROM_CLASS (object_class),
+                                             G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
+                                             NULL,
+                                             NULL,
+                                             NULL,
+                                             NULL,
+                                             G_TYPE_NONE,
+                                             0,
+                                             NULL);
+
+  /**
+   * YggWorker::disconnected:
+   * @worker: The #YggWorker instance emitting the signal.
+   * 
+   * Emitted when the the worker is disconnected from the bus and is no longer
+   * able to receive messages.
+   */
+  signals[SIGNAL_DISCONNECTED] = g_signal_newv ("disconnected",
+                                                G_TYPE_FROM_CLASS (object_class),
+                                                G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
+                                                NULL,
+                                                NULL,
+                                                NULL,
+                                                NULL,
+                                                G_TYPE_NONE,
+                                                0,
+                                                NULL);
 
   GError *err = NULL;
 
