@@ -33,6 +33,73 @@ g_date_time_format_iso8601 (GDateTime *datetime)
 }
 #endif
 
+/** sleep_delay:
+ *
+ * The number of seconds the handler will sleep before execution.
+ */
+static gint sleep_delay = 0;
+
+/** loop_times:
+ *
+ * The number of times the response handler is invoked.
+ */
+static gint loop_times = 1;
+
+/** loops:
+ *
+ * The number of times the response handler **has been** invoked.
+ */
+static gint loops = 1;
+
+static GHashTable *active_sources;
+
+typedef struct _EchoRxData
+{
+  YggWorker    *worker;
+  gchar        *addr;
+  gchar        *id;
+  gchar        *response_to;
+  YggMetadata  *metadata;
+  GBytes       *data;
+  GCancellable *cancellable;
+} _EchoRxData;
+
+static _EchoRxData *
+_rx_data_new (YggWorker    *worker,
+              gchar        *addr,
+              gchar        *id,
+              gchar        *response_to,
+              YggMetadata  *metadata,
+              GBytes       *data,
+              GCancellable *cancellable)
+{
+  _EchoRxData *rx_data = g_malloc0 (sizeof (_EchoRxData));
+
+  rx_data->worker = g_object_ref (worker);
+  rx_data->addr = g_strdup (addr);
+  rx_data->id = g_strdup (id);
+  rx_data->response_to = g_strdup (response_to);
+  rx_data->metadata = g_object_ref (metadata);
+  rx_data->data = g_bytes_ref (data);
+  rx_data->cancellable = g_object_ref (cancellable);
+
+  return rx_data;
+}
+
+static void
+_rx_data_free (_EchoRxData *data)
+{
+  g_object_unref (data->cancellable);
+  g_bytes_unref (data->data);
+  g_object_unref (data->metadata);
+  g_free (data->response_to);
+  g_free (data->id);
+  g_free (data->addr);
+  g_object_unref (data->worker);
+
+  g_free (data);
+}
+
 static void
 foreach (const gchar *key,
               const gchar *value,
@@ -109,6 +176,48 @@ static void handle_event (YggDispatcherEvent event,
   }
 }
 
+static gboolean
+tx_cb (gpointer user_data)
+{
+  _EchoRxData *d = (_EchoRxData *) user_data;
+
+  if (g_cancellable_is_cancelled (d->cancellable)) {
+    g_info ("message %s is cancelled", d->id);
+    g_hash_table_remove (active_sources, d->id);
+    return G_SOURCE_REMOVE;
+  }
+
+  g_debug ("loop iteration %d of %d", loops, loop_times);
+
+  g_autofree gchar *new_message_uuid = g_uuid_string_random ();
+  ygg_worker_transmit (d->worker,
+                       d->addr,
+                       new_message_uuid,
+                       d->id,
+                       d->metadata,
+                       d->data,
+                       d->cancellable,
+                       (GAsyncReadyCallback) transmit_done,
+                       NULL);
+
+  if (loops < loop_times) {
+    g_atomic_int_inc (&loops);
+    return G_SOURCE_CONTINUE;
+  } else {
+    g_atomic_int_set (&loops, 1);
+    return G_SOURCE_REMOVE;
+  }
+}
+
+static void
+_source_destroy_notify (gpointer user_data)
+{
+  _EchoRxData *rxdata = (_EchoRxData *) user_data;
+
+  g_hash_table_remove (active_sources, rxdata->id);
+  _rx_data_free (rxdata);
+}
+
 /**
  * A #YggRxFunc callback that is invoked each time the worker receives data
  * from the dispatcher.
@@ -129,29 +238,60 @@ static void handle_rx (YggWorker   *worker,
   g_debug ("data = %s", (guint8 *) g_bytes_get_data (data, NULL));
 
 
+  // Emit the "WORKING" event.
   GError *err = NULL;
   g_assert_null (err);
-  g_autofree gchar *event_message = g_strconcat ("working on data: ", (gchar *) g_bytes_get_data (data, NULL), NULL);
-  if (!ygg_worker_emit_event (worker, YGG_WORKER_EVENT_WORKING, id, event_message, &err)) {
+  g_autoptr (YggMetadata) event_data = ygg_metadata_new ();
+  ygg_metadata_set (event_data, "message", (gchar *) g_bytes_get_data (data, NULL));
+  if (!ygg_worker_emit_event (worker, YGG_WORKER_EVENT_WORKING, id, response_to, event_data, &err)) {
     if (err != NULL) {
       g_error ("%s", err->message);
     }
   }
-  g_autofree gchar *new_message_uuid = g_uuid_string_random ();
-  ygg_worker_transmit (worker,
-                       addr,
-                       new_message_uuid,
-                       id,
-                       metadata,
-                       data,
-                       NULL,
-                       (GAsyncReadyCallback) transmit_done,
-                       NULL);
+
+  GCancellable *cancellable = g_cancellable_new ();
+  g_hash_table_insert (active_sources, g_strdup (id), cancellable);
+
+  // Pack the message data into a container and add the actual call to
+  // ygg_worker_transmit to a GSourceFunc, to be called by an idle timer after
+  // a delay of 'sleep_delay' seconds.
+  _EchoRxData *rxdata = _rx_data_new (worker,
+                                      addr,
+                                      id,
+                                      response_to,
+                                      metadata,
+                                      data,
+                                      cancellable);
+  g_timeout_add_seconds_full (G_PRIORITY_DEFAULT,
+                              sleep_delay,
+                              G_SOURCE_FUNC (tx_cb),
+                              rxdata,
+                              (GDestroyNotify) _source_destroy_notify);
+
   g_free (addr);
   g_free (id);
   g_free (response_to);
   g_object_unref (metadata);
   g_bytes_unref (data);
+}
+
+/**
+ * A #YggCancelFunc callback that is invoked when the worker receives a cancel
+ * message from the dispatcher.
+ */
+static void handle_cancel (YggWorker *worker,
+                           gchar     *addr,
+                           gchar     *id,
+                           gchar     *cancel_id,
+                           gpointer   user_data)
+{
+  g_debug("handle_cancel");
+  GCancellable *cancellable = g_hash_table_lookup (active_sources, cancel_id);
+  if (cancellable != NULL) {
+    g_cancellable_cancel (cancellable);
+    g_hash_table_remove (active_sources, cancel_id);
+    g_atomic_int_set (&loops, 1);
+  }
 }
 
 static gboolean
@@ -164,11 +304,56 @@ sigint_callback (gpointer main_loop) {
   return G_SOURCE_REMOVE;
 }
 
+static void
+disconnected_signal_handler (G_GNUC_UNUSED YggWorker *worker,
+                             gpointer                 user_data)
+{
+  g_debug ("disconnected_signal_handler");
+  g_main_loop_quit (user_data);
+}
+
 gint
 main (gint   argc,
       gchar *argv[])
 {
-  g_set_prgname ("yggdrasil-worker-echo");
+  GError *error = NULL;
+
+  GOptionEntry option_entries[] = {
+    {
+      "sleep",
+      's',
+      G_OPTION_FLAG_NONE,
+      G_OPTION_ARG_INT,
+      &sleep_delay,
+      "Sleep time in seconds before echoing the response",
+      "SECONDS"
+    },
+    {
+      "loop",
+      'l',
+      G_OPTION_FLAG_NONE,
+      G_OPTION_ARG_INT,
+      &loop_times,
+      "Number of times to repeat the echo",
+      "TIMES"
+    },
+    { NULL, 0, 0, 0, NULL, NULL, NULL }
+  };
+
+  // Create option context and add entries.
+  g_autoptr (GOptionContext) opt_ctx = g_option_context_new ("");
+  g_option_context_add_main_entries (opt_ctx, option_entries, NULL);
+
+  g_assert_null (error);
+  if (!g_option_context_parse (opt_ctx, &argc, &argv, &error)) {
+    g_error ("failed to parse options: %s", error->message);
+    exit (1);
+  }
+
+  active_sources = g_hash_table_new_full (g_str_hash,
+                                          g_str_equal,
+                                          g_free,
+                                          g_object_unref);
 
   // Create main context for main loop
   GMainContext *main_context = g_main_context_default ();
@@ -189,8 +374,17 @@ main (gint   argc,
   if (!ygg_worker_set_event_func (worker, handle_event, NULL, NULL)) {
     g_error ("failed to set event_func");
   }
+  if (!ygg_worker_set_cancel_func (worker, handle_cancel, NULL, NULL)) {
+    g_error ("failed to set cancel_func");
+  }
 
-  GError *error = NULL;
+  // Connect a signal handler to the "YggWorker::disconnected" signal
+  g_signal_connect (worker,
+                    "disconnected",
+                    G_CALLBACK (disconnected_signal_handler),
+                    loop);
+
+  g_assert_null (error);
   if (!ygg_worker_connect (worker, &error)) {
     g_error ("%s", error->message);
     exit (1);
